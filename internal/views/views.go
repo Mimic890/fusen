@@ -85,7 +85,7 @@ func Home(l i18n.Localizer, projects []domain.ProjectSummary, due domain.DueSumm
 	if archived > 0 {
 		last = append(last, btn(l.T("home.archive", "count", archived), cb.New(cb.KindArchive)))
 	}
-	kb = append(kb, last)
+	kb = append(kb, last, row(btn(l.T("home.settings"), cb.New(cb.KindSettings))))
 	return Screen{Text: sb.String(), Keyboard: kb}
 }
 

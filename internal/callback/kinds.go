@@ -35,6 +35,13 @@ const (
 	KindTaskPriority = "tp" // tp:<id> picker, tp:<id>:<0-3> set
 	KindTaskDelete   = "tx" // tx:<id> ask, tx:<id>:y confirm
 
+	KindSettings = "s"  // settings screen
+	KindSetLang  = "sl" // sl:<en|ru>
+	KindSetView  = "sv" // sv:<b|t|a>
+	KindTimezone = "st" // st picker (also awaits typed input), st:<IANA name> set
+	KindDigest   = "sd" // sd picker (also awaits typed input), sd:<HHMM|off> set
+	KindRemind   = "sr" // sr picker, sr:<minutes> set
+
 	KindChecklist    = "tc" // tc:<task id>[:d] checklist, optionally in delete mode
 	KindChecklistAdd = "ta" // ta:<task id> prompt for new items
 	KindItemToggle   = "ii" // ii:<item id>
@@ -46,6 +53,7 @@ const (
 	Confirm    = "y" // confirms a destructive action
 	Clear      = "x" // clears a field
 	DeleteMode = "d" // checklist delete mode
+	Off        = "off"
 	DirLeft    = "l"
 	DirRight   = "r"
 )

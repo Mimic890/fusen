@@ -15,6 +15,13 @@ import (
 // dateLayout formats deadlines on the card.
 const dateLayout = "02.01.2006 15:04"
 
+// TgTime renders a date_time entity: Telegram shows it in the viewer's locale
+// and timezone. The fallback text uses loc for clients without support.
+func TgTime(t time.Time, loc *time.Location) string {
+	return `<tg-time unix="` + strconv.FormatInt(t.Unix(), 10) + `" format="wdt">` +
+		t.In(loc).Format(dateLayout) + `</tg-time>`
+}
+
 // Card is the data for a task card and its sub-screens.
 type Card struct {
 	Task    domain.Task
@@ -69,7 +76,7 @@ func cardText(l i18n.Localizer, c Card) string {
 	sb.WriteString("\n")
 
 	if t.DueAt != nil {
-		sb.WriteString("\n" + l.T("task.due", "date", t.DueAt.In(c.Loc).Format(dateLayout)))
+		sb.WriteString("\n" + l.T("task.due", "date", TgTime(*t.DueAt, c.Loc)))
 		if t.IsOverdue(c.Now) {
 			sb.WriteString(" ⏰ " + l.T("task.overdue"))
 		}
