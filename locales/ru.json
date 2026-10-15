@@ -96,5 +96,10 @@
   "column.prompt_new": "Отправьте название новой колонки.",
   "column.prompt_rename": "Отправьте новое название для <b>{name}</b>.",
   "column.created": "Колонка создана.",
-  "column.deleted": "Колонка удалена."
+  "column.deleted": "Колонка удалена.",
+  "view.buttons": "☰ Кнопки",
+  "view.table": "▦ Таблица",
+  "view.article": "≡ Статья",
+  "board.more": "ещё {count}",
+  "error.too_many_columns": "В проекте может быть не больше {max} колонок."
 }

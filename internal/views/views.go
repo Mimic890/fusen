@@ -13,11 +13,17 @@ import (
 	"github.com/Mimic890/fusen/internal/i18n"
 )
 
-// Screen is a rendered message: HTML text plus an inline keyboard.
+// Screen is a rendered message: HTML text plus an inline keyboard. When Rich
+// is set, the screen is sent as a rich message with Rich as its HTML content
+// and Text is ignored.
 type Screen struct {
 	Text     string
+	Rich     string
 	Keyboard [][]models.InlineKeyboardButton
 }
+
+// IsRich reports whether the screen is a rich message.
+func (s Screen) IsRich() bool { return s.Rich != "" }
 
 // Markup returns the inline keyboard markup for the screen.
 func (s Screen) Markup() *models.InlineKeyboardMarkup {
@@ -30,7 +36,12 @@ func (s Screen) Markup() *models.InlineKeyboardMarkup {
 
 // WithNotice prepends a short status line to the screen.
 func (s Screen) WithNotice(notice string) Screen {
-	if notice != "" {
+	if notice == "" {
+		return s
+	}
+	if s.IsRich() {
+		s.Rich = "<p><i>" + html.EscapeString(notice) + "</i></p>" + s.Rich
+	} else {
 		s.Text = "<i>" + html.EscapeString(notice) + "</i>\n\n" + s.Text
 	}
 	return s

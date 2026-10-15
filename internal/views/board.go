@@ -113,9 +113,12 @@ func BoardButtons(l i18n.Localizer, b Board) Screen {
 		kb = append(kb, cols)
 	}
 
-	kb = append(kb, row(
-		btn(l.T("btn.projects"), cb.New(cb.KindHome)),
-		btn(l.T("board.manage"), cb.New(cb.KindProjectManage, b.Project.ID)),
-	))
+	kb = append(kb,
+		viewSwitch(l, col.ID, domain.ViewButtons),
+		row(
+			btn(l.T("btn.projects"), cb.New(cb.KindHome)),
+			btn(l.T("board.manage"), cb.New(cb.KindProjectManage, b.Project.ID)),
+		),
+	)
 	return Screen{Text: text, Keyboard: kb}
 }
