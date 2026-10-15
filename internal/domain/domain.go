@@ -97,8 +97,8 @@ type DefaultColumn struct {
 	IsDone bool
 }
 
-// DefaultColumns are created for every new project. Names are stored as is
-// and can be renamed by the user, so they are not localized.
+// DefaultColumns are the initial columns of a project when no localized
+// names are given. Names are stored as is and can be renamed by the user.
 var DefaultColumns = []DefaultColumn{
 	{Name: "Todo"},
 	{Name: "In progress"},
