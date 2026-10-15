@@ -42,7 +42,8 @@ func (b *Bot) showBoard(ctx context.Context, r *request, columnID int64, page in
 	return b.showBoardOf(ctx, r, p, c.ID, page, notice)
 }
 
-// showBoardOf shows a column of project p; columnID 0 means the first column.
+// showBoardOf shows project p in the user's view. columnID (0 = first column)
+// and page apply to the buttons view.
 func (b *Bot) showBoardOf(ctx context.Context, r *request, p domain.Project, columnID int64, page int, notice string) error {
 	cols, err := b.store.ListColumns(ctx, p.ID)
 	if err != nil {
@@ -51,20 +52,35 @@ func (b *Bot) showBoardOf(ctx context.Context, r *request, p domain.Project, col
 	if len(cols) == 0 {
 		return domain.ErrNotFound
 	}
-	idx := max(columnIndex(cols, columnID), 0)
-	page = views.ClampPage(page, cols[idx].Tasks)
-
-	tasks, _, err := b.store.ListColumnTasks(ctx, cols[idx].ID, page*views.PageSize, views.PageSize)
-	if err != nil {
-		return err
-	}
 	if !p.Archived {
 		if err := b.store.SetCurrentProject(ctx, r.user.TgID, p.ID); err != nil {
 			return err
 		}
 	}
-	board := views.Board{Project: p, Columns: cols, Index: idx, Tasks: tasks, Page: page, Now: time.Now()}
-	return b.show(ctx, r, views.BoardButtons(r.l, board).WithNotice(notice))
+
+	var s views.Screen
+	switch r.user.ViewMode {
+	case domain.ViewTable, domain.ViewArticle:
+		tasks, err := b.store.ListProjectTasks(ctx, p.ID)
+		if err != nil {
+			return err
+		}
+		rb := views.RichBoard{Project: p, Columns: cols, Tasks: tasks, Now: time.Now(), Loc: r.user.Location()}
+		if r.user.ViewMode == domain.ViewTable {
+			s = views.BoardTable(r.l, rb)
+		} else {
+			s = views.BoardArticle(r.l, rb)
+		}
+	default:
+		idx := max(columnIndex(cols, columnID), 0)
+		page = views.ClampPage(page, cols[idx].Tasks)
+		tasks, _, err := b.store.ListColumnTasks(ctx, cols[idx].ID, page*views.PageSize, views.PageSize)
+		if err != nil {
+			return err
+		}
+		s = views.BoardButtons(r.l, views.Board{Project: p, Columns: cols, Index: idx, Tasks: tasks, Page: page, Now: time.Now()})
+	}
+	return b.show(ctx, r, s.WithNotice(notice))
 }
 
 func (b *Bot) onBoard(ctx context.Context, r *request) error {
@@ -73,6 +89,25 @@ func (b *Bot) onBoard(ctx context.Context, r *request) error {
 		return err
 	}
 	return b.showBoard(ctx, r, id, r.data.Int(1), "")
+}
+
+// onView switches the board view and remembers it as the user's preference.
+func (b *Bot) onView(ctx context.Context, r *request) error {
+	id, err := r.data.ID(0)
+	if err != nil {
+		return err
+	}
+	v, ok := domain.ParseViewCode(r.data.Arg(1))
+	if !ok {
+		return domain.ErrNotFound
+	}
+	if v != r.user.ViewMode {
+		if err := b.store.SetViewMode(ctx, r.user.TgID, v); err != nil {
+			return err
+		}
+		r.user.ViewMode = v
+	}
+	return b.showBoard(ctx, r, id, 0, "")
 }
 
 // Column settings.

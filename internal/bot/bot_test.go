@@ -38,6 +38,8 @@ type fakeAPI struct {
 	nextID int
 	// failDelete makes deleteMessage fail, like for messages older than 48 hours.
 	failDelete bool
+	// failEdit makes editMessageText fail, like for a message deleted by the user.
+	failEdit bool
 	// rateLimit makes the next N calls of a method respond with 429.
 	rateLimit map[string]int
 }
@@ -61,10 +63,15 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if method == "editMessageText" && f.failEdit {
+		io.WriteString(w, `{"ok":false,"error_code":400,"description":"Bad Request: message to edit not found"}`)
+		return
+	}
+
 	switch method {
-	case "sendMessage", "editMessageText":
+	case "sendMessage", "sendRichMessage", "editMessageText":
 		id := f.nextID + 1
-		if method == "sendMessage" {
+		if method != "editMessageText" {
 			f.nextID++
 		} else {
 			id, _ = strconv.Atoi(params["message_id"])

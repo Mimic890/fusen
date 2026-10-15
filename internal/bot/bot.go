@@ -71,6 +71,7 @@ func newBot(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logge
 		cb.KindProjectArchive: b.onProjectArchive,
 		cb.KindProjectDelete:  b.onProjectDelete,
 		cb.KindBoard:          b.onBoard,
+		cb.KindView:           b.onView,
 		cb.KindColumns:        b.onColumns,
 		cb.KindColumn:         b.onColumn,
 		cb.KindColumnNew:      b.onColumnNew,
@@ -324,6 +325,8 @@ func (b *Bot) userError(r *request, err error) string {
 		return r.l.T("error.column_not_empty")
 	case errors.Is(err, domain.ErrLastColumn):
 		return r.l.T("error.last_column")
+	case errors.Is(err, domain.ErrTooManyColumns):
+		return r.l.T("error.too_many_columns", "max", domain.MaxColumns)
 	}
 	b.log.Error("handler failed", "user_id", r.user.TgID, "kind", r.data.Kind, "args", r.data.Args, "err", err)
 	return r.l.T("error.generic")

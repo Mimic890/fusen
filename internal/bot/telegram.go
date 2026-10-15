@@ -50,7 +50,25 @@ func isNotModified(err error) bool {
 
 var noPreview = &models.LinkPreviewOptions{IsDisabled: tgbot.True()}
 
+func richContent(s views.Screen) models.InputRichMessage {
+	// Task titles are user text; do not turn #tags or URLs in them into entities.
+	return models.InputRichMessage{HTML: s.Rich, SkipEntityDetection: true}
+}
+
 func (b *Bot) sendScreen(ctx context.Context, chatID int64, s views.Screen) (int, error) {
+	if s.IsRich() {
+		msg, err := withRetry(ctx, b.log, "sendRichMessage", func(ctx context.Context) (*models.Message, error) {
+			return b.api.SendRichMessage(ctx, &tgbot.SendRichMessageParams{
+				ChatID:      chatID,
+				RichMessage: richContent(s),
+				ReplyMarkup: s.Markup(),
+			})
+		})
+		if err != nil {
+			return 0, err
+		}
+		return msg.ID, nil
+	}
 	msg, err := withRetry(ctx, b.log, "sendMessage", func(ctx context.Context) (*models.Message, error) {
 		return b.api.SendMessage(ctx, &tgbot.SendMessageParams{
 			ChatID:             chatID,
@@ -68,6 +86,16 @@ func (b *Bot) sendScreen(ctx context.Context, chatID int64, s views.Screen) (int
 
 func (b *Bot) editScreen(ctx context.Context, chatID int64, msgID int, s views.Screen) error {
 	_, err := withRetry(ctx, b.log, "editMessageText", func(ctx context.Context) (*models.Message, error) {
+		// A message can switch between plain text and rich content on edit.
+		if s.IsRich() {
+			rich := richContent(s)
+			return b.api.EditMessageText(ctx, &tgbot.EditMessageTextParams{
+				ChatID:      chatID,
+				MessageID:   msgID,
+				RichMessage: &rich,
+				ReplyMarkup: s.Markup(),
+			})
+		}
 		return b.api.EditMessageText(ctx, &tgbot.EditMessageTextParams{
 			ChatID:             chatID,
 			MessageID:          msgID,
