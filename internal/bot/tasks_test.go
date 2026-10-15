@@ -42,7 +42,7 @@ func TestCreateTasksFromBoard(t *testing.T) {
 
 	h.press(live, cb.New(cb.KindProject, inbox.ID))
 	text, markup := lastEdit(t, h.api.take())
-	if !strings.Contains(text, "Входящие</b> › Todo (0 / 0)") || !strings.Contains(markup, "In progress ›") {
+	if !strings.Contains(text, "Входящие</b> › К выполнению (0 / 0)") || !strings.Contains(markup, "В работе ›") {
 		t.Fatalf("board: %q %q", text, markup)
 	}
 	if u, _ := h.store.GetUser(ctx, userID); u.CurrentProjectID != inbox.ID {
@@ -57,7 +57,7 @@ func TestCreateTasksFromBoard(t *testing.T) {
 	h.message(strings.Join(lines, "\n"), 600)
 	calls := h.api.take()
 	text, markup = lastEdit(t, calls)
-	if !strings.Contains(text, "Todo (9 / 9)") || !strings.Contains(markup, "2/2") || !strings.Contains(markup, "task i") {
+	if !strings.Contains(text, "К выполнению (9 / 9)") || !strings.Contains(markup, "2/2") || !strings.Contains(markup, "task i") {
 		t.Fatalf("board after create should show the last page: %q %q", text, markup)
 	}
 	if calls[len(calls)-1].method != "deleteMessage" {
@@ -81,7 +81,7 @@ func TestTaskCardFlow(t *testing.T) {
 
 	h.press(live, cb.New(cb.KindTask, id))
 	text, markup := lastEdit(t, h.api.take())
-	if !strings.Contains(text, "buy cable") || !strings.Contains(markup, "In progress →") || strings.Contains(markup, "← ") {
+	if !strings.Contains(text, "buy cable") || !strings.Contains(markup, "В работе →") || strings.Contains(markup, "← ") {
 		t.Fatalf("card: %q %q", text, markup)
 	}
 
@@ -129,7 +129,7 @@ func TestTaskCardFlow(t *testing.T) {
 		t.Fatal("not deleted")
 	}
 	text, _ = lastEdit(t, h.api.take())
-	if !strings.Contains(text, "› Done") {
+	if !strings.Contains(text, "› Готово") {
 		t.Errorf("after delete should return to the task's column: %q", text)
 	}
 }

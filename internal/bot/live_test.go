@@ -74,6 +74,11 @@ func TestLiveRichViews(t *testing.T) {
 		"article max":     views.BoardArticle(l, liveBoard(maxCols, domain.MaxTitleLen)),
 		"article notice":  views.BoardArticle(l, liveBoard([]int{1, 1}, 10)).WithNotice("Сохранено."),
 		"buttons (plain)": views.BoardButtons(l, views.Board{Project: domain.Project{ID: 1, Name: "P"}, Columns: liveBoard([]int{1}, 3).Columns}),
+		"card with tg-time": views.TaskCard(l, views.Card{Task: liveBoard([]int{1}, 20).Tasks[0].Task,
+			Project: domain.Project{Name: "P"}, Column: domain.Column{Name: "C"}, Loc: time.UTC, Now: time.Now()}),
+		"settings": views.Settings(l, domain.User{Lang: "ru", ViewMode: domain.ViewTable, Timezone: "Asia/Kolkata",
+			DigestTime: "09:00", RemindBeforeMin: 90}, time.Now()),
+		"timezone picker": views.TimezonePicker(l, domain.User{Timezone: "UTC"}, time.Now()),
 	}
 
 	var sent []int
