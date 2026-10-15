@@ -50,6 +50,7 @@ type User struct {
 	ViewMode         ViewMode
 	Timezone         string
 	DigestTime       string // "HH:MM", empty = disabled
+	DigestSentOn     string // "YYYY-MM-DD" in the user's timezone
 	RemindBeforeMin  int
 	LiveMessageID    int // 0 = none
 	State            string
