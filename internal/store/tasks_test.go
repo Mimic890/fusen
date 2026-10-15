@@ -15,7 +15,7 @@ func setupBoard(t *testing.T) (*Store, domain.Project, []domain.ColumnSummary) {
 	s := openTest(t)
 	newUser(t, s, 1)
 	newUser(t, s, 2)
-	p, err := s.CreateProject(context.Background(), 1, "A")
+	p, err := s.CreateProject(context.Background(), 1, "A", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
