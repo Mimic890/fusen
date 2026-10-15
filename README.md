@@ -14,7 +14,30 @@ docker compose up -d --build
 
 The SQLite database is stored in `./data/fusen.db` (bind mount). The container
 runs as UID/GID 1000 by default; override with `FUSEN_UID` / `FUSEN_GID` if
-`./data` is owned by another user.
+`./data` is owned by another user. Create `./data` yourself before the first
+start (see below).
+
+### `./data` is not writable
+
+If `./data` does not exist when the container starts, Docker creates it owned by
+root, and the bot (running as UID 1000) cannot write there. It stops with:
+
+```
+store: database location is not writable: /data is not writable by uid 1000, gid 1000 ...
+```
+
+Fix the owner on the host and restart:
+
+```fish
+sudo chown -R 1000:1000 data
+docker compose up -d
+```
+
+Or run the container as the current owner of `./data` (`id -u` / `id -g` print your own IDs):
+
+```fish
+env FUSEN_UID=(id -u) FUSEN_GID=(id -g) docker compose up -d
+```
 
 ## Run locally
 
