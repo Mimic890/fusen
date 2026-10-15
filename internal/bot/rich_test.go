@@ -85,14 +85,14 @@ func TestSwitchViewsOnLiveScreen(t *testing.T) {
 	// Article view collapses done columns.
 	h.press(live, cb.New(cb.KindView, cols[0].ID, domain.ViewArticle.Code()))
 	article := richHTML(t, lastCall(t, h.api.take(), "editMessageText"))
-	if !strings.Contains(article, "<details><summary>Done · 1</summary>") {
+	if !strings.Contains(article, "<details><summary>Готово · 1</summary>") {
 		t.Errorf("article: %s", article)
 	}
 
 	// "More" in rich views leads to the buttons view of that column.
 	h.press(live, cb.New(cb.KindView, cols[2].ID, domain.ViewButtons.Code()))
 	edit = lastCall(t, h.api.take(), "editMessageText")
-	if richHTML(t, edit) != "" || !strings.Contains(edit.params["text"], "› Done (1 / 2)") {
+	if richHTML(t, edit) != "" || !strings.Contains(edit.params["text"], "› Готово (1 / 2)") {
 		t.Errorf("buttons view of the done column: %+v", edit.params)
 	}
 }

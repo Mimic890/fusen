@@ -88,18 +88,22 @@ func getProject(ctx context.Context, q querier, userID, id int64) (domain.Projec
 	return p, nil
 }
 
-// CreateProject creates a project with default columns.
-func (s *Store) CreateProject(ctx context.Context, userID int64, name string) (domain.Project, error) {
+// CreateProject creates a project with the given initial columns
+// (domain.DefaultColumns when nil).
+func (s *Store) CreateProject(ctx context.Context, userID int64, name string, cols []domain.DefaultColumn) (domain.Project, error) {
 	var p domain.Project
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		var err error
-		p, err = createProject(ctx, tx, userID, name, false)
+		p, err = createProject(ctx, tx, userID, name, false, cols)
 		return err
 	})
 	return p, err
 }
 
-func createProject(ctx context.Context, tx *sql.Tx, userID int64, name string, inbox bool) (domain.Project, error) {
+func createProject(ctx context.Context, tx *sql.Tx, userID int64, name string, inbox bool, cols []domain.DefaultColumn) (domain.Project, error) {
+	if cols == nil {
+		cols = domain.DefaultColumns
+	}
 	now := time.Now()
 	p := domain.Project{UserID: userID, Name: name, IsInbox: inbox, CreatedAt: time.Unix(now.Unix(), 0)}
 
@@ -120,7 +124,7 @@ func createProject(ctx context.Context, tx *sql.Tx, userID int64, name string, i
 		return p, err
 	}
 
-	for i, c := range domain.DefaultColumns {
+	for i, c := range cols {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO columns (project_id, name, position, is_done)
 			VALUES (?, ?, ?, ?)`, p.ID, c.Name, i, boolInt(c.IsDone)); err != nil {
 			return p, fmt.Errorf("insert column: %w", err)

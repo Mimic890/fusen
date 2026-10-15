@@ -192,9 +192,8 @@ func articleItem(t domain.TaskSummary, b RichBoard) (string, int) {
 	size := utf8.RuneCountInString(label)
 	parts := []string{richButton(label, cb.New(cb.KindTask, t.ID))}
 	if t.DueAt != nil {
-		fallback := t.DueAt.In(b.Loc).Format(dateLayout)
 		size += 32 // rendered date and time in the user's locale
-		parts = append(parts, `<tg-time unix="`+strconv.FormatInt(t.DueAt.Unix(), 10)+`" format="wdt">`+fallback+`</tg-time>`)
+		parts = append(parts, TgTime(*t.DueAt, b.Loc))
 	}
 	if len(t.Tags) > 0 {
 		tags := strings.Join(t.Tags, " #")

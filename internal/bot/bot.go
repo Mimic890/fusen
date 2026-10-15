@@ -88,6 +88,12 @@ func newBot(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logge
 		cb.KindTaskTags:       b.onTaskTags,
 		cb.KindTaskPriority:   b.onTaskPriority,
 		cb.KindTaskDelete:     b.onTaskDelete,
+		cb.KindSettings:       b.onSettings,
+		cb.KindSetLang:        b.onSetLang,
+		cb.KindSetView:        b.onSetView,
+		cb.KindTimezone:       b.onTimezone,
+		cb.KindDigest:         b.onDigest,
+		cb.KindRemind:         b.onRemind,
 		cb.KindChecklist:      b.onChecklist,
 		cb.KindChecklistAdd:   b.onChecklistAdd,
 		cb.KindItemToggle:     b.onItemToggle,
@@ -103,6 +109,8 @@ func newBot(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logge
 		cb.KindTaskDesc:      b.inputTaskDesc,
 		cb.KindTaskTags:      b.inputTaskTags,
 		cb.KindChecklistAdd:  b.inputChecklistAdd,
+		cb.KindTimezone:      b.inputTimezone,
+		cb.KindDigest:        b.inputDigest,
 	}
 
 	api, err := tgbot.New(cfg.BotToken, append([]tgbot.Option{
@@ -119,6 +127,7 @@ func newBot(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logge
 
 // Run polls for updates until ctx is cancelled.
 func (b *Bot) Run(ctx context.Context) {
+	b.setCommands(ctx)
 	b.api.Start(ctx)
 }
 
@@ -154,6 +163,7 @@ func (b *Bot) newRequest(ctx context.Context, from *models.User) (*request, erro
 		Lang:      lang,
 		Timezone:  b.cfg.DefaultTZ,
 		InboxName: b.i18n.For(lang).T("project.inbox_name"),
+		Columns:   defaultColumns(b.i18n.For(lang)),
 	})
 	if err != nil {
 		return nil, err
@@ -186,6 +196,8 @@ func (b *Bot) onMessage(ctx context.Context, m *models.Message) {
 	switch {
 	case command(m.Text) == "start":
 		b.cmdStart(ctx, r, m)
+	case command(m.Text) == "settings":
+		b.cmdSettings(ctx, r, m)
 	case r.user.State != "":
 		b.onInput(ctx, r, m)
 	}
@@ -325,6 +337,10 @@ func (b *Bot) userError(r *request, err error) string {
 		return r.l.T("error.column_not_empty")
 	case errors.Is(err, domain.ErrLastColumn):
 		return r.l.T("error.last_column")
+	case errors.Is(err, domain.ErrBadTimezone):
+		return r.l.T("error.bad_timezone")
+	case errors.Is(err, domain.ErrBadClock):
+		return r.l.T("error.bad_clock")
 	case errors.Is(err, domain.ErrTooManyColumns):
 		return r.l.T("error.too_many_columns", "max", domain.MaxColumns)
 	}
@@ -338,6 +354,7 @@ func isInputError(err error) bool {
 	for _, e := range []error{
 		domain.ErrEmptyName, domain.ErrNameTooLong, domain.ErrTitleTooLong, domain.ErrDescriptionTooLong,
 		domain.ErrItemTooLong, domain.ErrTooManyItems, domain.ErrTooManyTags, domain.ErrTagTooLong,
+		domain.ErrBadTimezone, domain.ErrBadClock,
 	} {
 		if errors.Is(err, e) {
 			return true

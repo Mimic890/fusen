@@ -6,8 +6,18 @@ import (
 
 	cb "github.com/Mimic890/fusen/internal/callback"
 	"github.com/Mimic890/fusen/internal/domain"
+	"github.com/Mimic890/fusen/internal/i18n"
 	"github.com/Mimic890/fusen/internal/views"
 )
+
+// defaultColumns returns the initial project columns named in the user's language.
+func defaultColumns(l i18n.Localizer) []domain.DefaultColumn {
+	return []domain.DefaultColumn{
+		{Name: l.T("column.default_todo")},
+		{Name: l.T("column.default_doing")},
+		{Name: l.T("column.default_done"), IsDone: true},
+	}
+}
 
 func (b *Bot) homeScreen(ctx context.Context, r *request) (views.Screen, error) {
 	projects, err := b.store.ListProjects(ctx, r.user.TgID, false)
@@ -158,7 +168,7 @@ func (b *Bot) inputProjectNew(ctx context.Context, r *request, text string) erro
 	if isInputError(err) {
 		return b.reprompt(ctx, r, b.projectNewPrompt(r), err)
 	}
-	p, err := b.store.CreateProject(ctx, r.user.TgID, name)
+	p, err := b.store.CreateProject(ctx, r.user.TgID, name, defaultColumns(r.l))
 	if err != nil {
 		return err
 	}

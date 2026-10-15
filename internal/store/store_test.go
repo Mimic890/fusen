@@ -101,7 +101,7 @@ func TestUserFields(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 	newUser(t, s, 1)
-	p, _ := s.CreateProject(ctx, 1, "A")
+	p, _ := s.CreateProject(ctx, 1, "A", nil)
 
 	if err := s.SetLiveMessage(ctx, 1, 55); err != nil {
 		t.Fatal(err)
@@ -134,11 +134,11 @@ func TestProjectLifecycle(t *testing.T) {
 	newUser(t, s, 1)
 	newUser(t, s, 2)
 
-	a, err := s.CreateProject(ctx, 1, "A")
+	a, err := s.CreateProject(ctx, 1, "A", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := s.CreateProject(ctx, 1, "B")
+	b, _ := s.CreateProject(ctx, 1, "B", nil)
 	if b.Position <= a.Position {
 		t.Errorf("positions: a=%d b=%d", a.Position, b.Position)
 	}
@@ -188,7 +188,7 @@ func TestDeleteProjectCascades(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 	newUser(t, s, 1)
-	p, _ := s.CreateProject(ctx, 1, "A")
+	p, _ := s.CreateProject(ctx, 1, "A", nil)
 	cols, _ := s.ListColumns(ctx, p.ID)
 	addTask(t, s, p.ID, cols[0].ID, nil)
 
@@ -206,7 +206,7 @@ func TestOpenTasksAndDueSummary(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 	newUser(t, s, 1)
-	p, _ := s.CreateProject(ctx, 1, "A")
+	p, _ := s.CreateProject(ctx, 1, "A", nil)
 	cols, _ := s.ListColumns(ctx, p.ID)
 	todo, done := cols[0].ID, cols[2].ID
 
@@ -237,5 +237,39 @@ func TestOpenTasksAndDueSummary(t *testing.T) {
 	_ = s.SetProjectArchived(ctx, 1, p.ID, true)
 	if ds, _ = s.DueSummary(ctx, 1, now, loc); ds != (domain.DueSummary{}) {
 		t.Errorf("archived project counted: %+v", ds)
+	}
+}
+
+func TestSettings(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	u := newUser(t, s, 1)
+	if u.DigestTime != domain.DefaultDigestTime {
+		t.Errorf("default digest = %q", u.DigestTime)
+	}
+
+	if err := s.SetLang(ctx, 1, "en", "Входящие", "Inbox"); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.SetTimezone(ctx, 1, "Europe/Moscow")
+	_ = s.SetDigestTime(ctx, 1, "")
+	_ = s.SetRemindBefore(ctx, 1, 15)
+	u, _ = s.GetUser(ctx, 1)
+	if u.Lang != "en" || u.Timezone != "Europe/Moscow" || u.DigestTime != "" || u.RemindBeforeMin != 15 {
+		t.Fatalf("user = %+v", u)
+	}
+	ps, _ := s.ListProjects(ctx, 1, false)
+	if ps[0].Name != "Inbox" {
+		t.Errorf("inbox not renamed: %q", ps[0].Name)
+	}
+
+	// A custom inbox name survives a language change.
+	_ = s.RenameProject(ctx, 1, ps[0].ID, "Mail")
+	_ = s.SetLang(ctx, 1, "ru", "Inbox", "Входящие")
+	if ps, _ = s.ListProjects(ctx, 1, false); ps[0].Name != "Mail" {
+		t.Errorf("custom inbox name lost: %q", ps[0].Name)
+	}
+	if err := s.SetLang(ctx, 1, "de", "", ""); err == nil {
+		t.Error("CHECK constraint must reject unknown languages")
 	}
 }
