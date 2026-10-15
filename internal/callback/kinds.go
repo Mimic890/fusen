@@ -14,7 +14,8 @@ const (
 	KindProjectArchive = "pa" // pa:<id>:<1|0> archive or restore
 	KindProjectDelete  = "pd" // pd:<id> ask, pd:<id>:y confirm
 
-	KindBoard = "b" // b:<column id>[:<page>] board column in the buttons view
+	KindBoard = "b" // b:<column id>[:<page>] board in the user's view; page and column apply to the buttons view
+	KindView  = "v" // v:<column id>:<b|t|a> switch the board view
 
 	KindColumns      = "cl" // cl:<project id> column settings
 	KindColumn       = "c"  // c:<id> column screen

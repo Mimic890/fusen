@@ -96,5 +96,10 @@
   "column.prompt_new": "Send a name for the new column.",
   "column.prompt_rename": "Send a new name for <b>{name}</b>.",
   "column.created": "Column created.",
-  "column.deleted": "Column deleted."
+  "column.deleted": "Column deleted.",
+  "view.buttons": "☰ Buttons",
+  "view.table": "▦ Table",
+  "view.article": "≡ Article",
+  "board.more": "+{count} more",
+  "error.too_many_columns": "A project can have at most {max} columns."
 }

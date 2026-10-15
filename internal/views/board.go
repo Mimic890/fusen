@@ -24,6 +24,15 @@ type Board struct {
 	Now     time.Time
 }
 
+// ProjectTasks returns the number of tasks in all columns of the project.
+func (b Board) ProjectTasks() int {
+	n := 0
+	for _, c := range b.Columns {
+		n += c.Tasks
+	}
+	return n
+}
+
 // Pages returns the number of pages of the shown column (at least 1).
 func (b Board) Pages() int {
 	return Pages(b.Columns[b.Index].Tasks)
@@ -65,12 +74,11 @@ func taskLabel(t domain.TaskSummary, now time.Time) string {
 // BoardButtons renders a project column with task buttons and column navigation.
 func BoardButtons(l i18n.Localizer, b Board) Screen {
 	col := b.Columns[b.Index]
+	// Header: tasks in this column / tasks in the whole project.
 	text := "<b>" + Escape(b.Project.Name) + "</b> › " + Escape(col.Name) +
-		" (" + strconv.Itoa(b.Index+1) + "/" + strconv.Itoa(len(b.Columns)) + ")\n"
+		" (" + strconv.Itoa(col.Tasks) + " / " + strconv.Itoa(b.ProjectTasks()) + ")"
 	if col.Tasks == 0 {
-		text += l.T("board.empty")
-	} else {
-		text += l.T("board.count", "count", col.Tasks)
+		text += "\n" + l.T("board.empty")
 	}
 
 	var kb [][]models.InlineKeyboardButton
@@ -105,9 +113,12 @@ func BoardButtons(l i18n.Localizer, b Board) Screen {
 		kb = append(kb, cols)
 	}
 
-	kb = append(kb, row(
-		btn(l.T("btn.projects"), cb.New(cb.KindHome)),
-		btn(l.T("board.manage"), cb.New(cb.KindProjectManage, b.Project.ID)),
-	))
+	kb = append(kb,
+		viewSwitch(l, col.ID, domain.ViewButtons),
+		row(
+			btn(l.T("btn.projects"), cb.New(cb.KindHome)),
+			btn(l.T("board.manage"), cb.New(cb.KindProjectManage, b.Project.ID)),
+		),
+	)
 	return Screen{Text: text, Keyboard: kb}
 }

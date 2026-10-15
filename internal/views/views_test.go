@@ -174,3 +174,15 @@ func TestCardMoveButtonsFollowEdges(t *testing.T) {
 		t.Errorf("last column moves = %v", got)
 	}
 }
+
+func TestBoardHeaderCounts(t *testing.T) {
+	l := localizer(t, "en")
+	cols := []domain.ColumnSummary{
+		{Column: domain.Column{ID: 1, Name: "Todo"}, Tasks: 3},
+		{Column: domain.Column{ID: 2, Name: "Done"}, Tasks: 7},
+	}
+	s := BoardButtons(l, Board{Project: domain.Project{ID: 1, Name: "P"}, Columns: cols, Index: 1})
+	if !strings.HasPrefix(s.Text, "<b>P</b> › Done (7 / 10)") {
+		t.Errorf("header: %q", s.Text)
+	}
+}

@@ -42,7 +42,7 @@ func TestCreateTasksFromBoard(t *testing.T) {
 
 	h.press(live, cb.New(cb.KindProject, inbox.ID))
 	text, markup := lastEdit(t, h.api.take())
-	if !strings.Contains(text, "Входящие</b> › Todo (1/3)") || !strings.Contains(markup, "In progress ›") {
+	if !strings.Contains(text, "Входящие</b> › Todo (0 / 0)") || !strings.Contains(markup, "In progress ›") {
 		t.Fatalf("board: %q %q", text, markup)
 	}
 	if u, _ := h.store.GetUser(ctx, userID); u.CurrentProjectID != inbox.ID {
@@ -57,7 +57,7 @@ func TestCreateTasksFromBoard(t *testing.T) {
 	h.message(strings.Join(lines, "\n"), 600)
 	calls := h.api.take()
 	text, markup = lastEdit(t, calls)
-	if !strings.Contains(text, "9") || !strings.Contains(markup, "2/2") || !strings.Contains(markup, "task i") {
+	if !strings.Contains(text, "Todo (9 / 9)") || !strings.Contains(markup, "2/2") || !strings.Contains(markup, "task i") {
 		t.Fatalf("board after create should show the last page: %q %q", text, markup)
 	}
 	if calls[len(calls)-1].method != "deleteMessage" {

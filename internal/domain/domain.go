@@ -131,3 +131,22 @@ func LangFromCode(code string) string {
 	}
 	return LangEN
 }
+
+// viewCodes are compact view mode codes for callback data.
+var viewCodes = map[ViewMode]string{ViewButtons: "b", ViewTable: "t", ViewArticle: "a"}
+
+// Views lists view modes in display order.
+var Views = []ViewMode{ViewButtons, ViewTable, ViewArticle}
+
+// Code returns the compact code of the view mode.
+func (v ViewMode) Code() string { return viewCodes[v] }
+
+// ParseViewCode maps a compact code back to a view mode.
+func ParseViewCode(code string) (ViewMode, bool) {
+	for v, c := range viewCodes {
+		if c == code {
+			return v, true
+		}
+	}
+	return "", false
+}

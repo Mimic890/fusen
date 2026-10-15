@@ -39,6 +39,13 @@ go run ./cmd/fusen
 go test ./...
 ```
 
+A live smoke test renders every board view and sends it to a chat through the
+real Bot API, then deletes the messages:
+
+```fish
+env BOT_TOKEN=<token> FUSEN_LIVE_CHAT_ID=<your chat id> go test -tags live -run Live ./internal/bot/
+```
+
 ## License
 
 AGPL-3.0

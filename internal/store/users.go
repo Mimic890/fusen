@@ -108,3 +108,12 @@ func (s *Store) SetCurrentProject(ctx context.Context, tgID, projectID int64) er
 	}
 	return nil
 }
+
+// SetViewMode stores the user's board view.
+func (s *Store) SetViewMode(ctx context.Context, tgID int64, v domain.ViewMode) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE users SET view_mode = ? WHERE tg_id = ?`, string(v), tgID)
+	if err != nil {
+		return fmt.Errorf("set view mode: %w", err)
+	}
+	return nil
+}

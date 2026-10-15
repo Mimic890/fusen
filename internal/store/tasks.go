@@ -249,3 +249,55 @@ func (s *Store) DeleteTask(ctx context.Context, userID, id int64) error {
 		return err
 	})
 }
+
+// ListProjectTasks returns all tasks of a project in board order (column, then
+// position) with tags and checklist progress. The caller must have verified
+// project ownership.
+func (s *Store) ListProjectTasks(ctx context.Context, projectID int64) ([]domain.TaskSummary, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+taskCols+`,
+			(SELECT COUNT(*) FROM checklist_items i WHERE i.task_id = t.id AND i.done = 1),
+			(SELECT COUNT(*) FROM checklist_items i WHERE i.task_id = t.id)
+		FROM tasks t JOIN columns c ON c.id = t.column_id
+		WHERE t.project_id = ? ORDER BY c.position, c.id, t.position, t.id`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("list project tasks: %w", err)
+	}
+	defer rows.Close()
+
+	var out []domain.TaskSummary
+	byID := map[int64]int{}
+	for rows.Next() {
+		var ts domain.TaskSummary
+		t, err := scanTask(rows, &ts.ChecklistDone, &ts.ChecklistTotal)
+		if err != nil {
+			return nil, fmt.Errorf("scan task: %w", err)
+		}
+		ts.Task = t
+		byID[t.ID] = len(out)
+		out = append(out, ts)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	tagRows, err := s.db.QueryContext(ctx, `SELECT tt.task_id, g.name FROM task_tags tt
+		JOIN tags g ON g.id = tt.tag_id JOIN tasks t ON t.id = tt.task_id
+		WHERE t.project_id = ? ORDER BY g.name`, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("project tags: %w", err)
+	}
+	defer tagRows.Close()
+	for tagRows.Next() {
+		var (
+			id   int64
+			name string
+		)
+		if err := tagRows.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		if i, ok := byID[id]; ok {
+			out[i].Tags = append(out[i].Tags, name)
+		}
+	}
+	return out, tagRows.Err()
+}
