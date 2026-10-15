@@ -1,0 +1,12 @@
+services:
+  fusen:
+    build: .
+    image: fusen:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/fusen.db
+    # Run as the owner of ./data so the bind mount is writable.
+    user: "${FUSEN_UID:-1000}:${FUSEN_GID:-1000}"
+    volumes:
+      - ./data:/data
