@@ -16,6 +16,8 @@ const (
 	MaxChecklistItems = 20
 	MaxTags           = 10
 	MaxTagLen         = 32
+	// MaxColumns matches the rich message table limit of 20 columns.
+	MaxColumns = 20
 )
 
 var (
@@ -27,6 +29,7 @@ var (
 	ErrTagTooLong         = errors.New("tag is too long")
 	ErrColumnNotEmpty     = errors.New("column has tasks")
 	ErrLastColumn         = errors.New("project must keep at least one column")
+	ErrTooManyColumns     = errors.New("too many columns")
 )
 
 // Task is a card on a kanban board.

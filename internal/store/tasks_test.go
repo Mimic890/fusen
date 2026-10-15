@@ -224,3 +224,52 @@ func TestColumns(t *testing.T) {
 		t.Errorf("delete last: %v", err)
 	}
 }
+
+func TestListProjectTasks(t *testing.T) {
+	s, p, cols := setupBoard(t)
+	ctx := context.Background()
+	done, _ := s.CreateTasks(ctx, 1, cols[2].ID, []string{"d"})
+	todo, _ := s.CreateTasks(ctx, 1, cols[0].ID, []string{"a", "b"})
+	_ = s.SetTaskTags(ctx, 1, todo[1].ID, []string{"z", "y"})
+	_ = s.AddChecklistItems(ctx, 1, done[0].ID, []string{"x"})
+
+	got, err := s.ListProjectTasks(ctx, p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := []string{got[0].Title, got[1].Title, got[2].Title}
+	if !slices.Equal(titles, []string{"a", "b", "d"}) {
+		t.Fatalf("order = %v", titles)
+	}
+	if !slices.Equal(got[1].Tags, []string{"y", "z"}) || got[2].ChecklistTotal != 1 {
+		t.Errorf("tags/progress: %+v", got)
+	}
+}
+
+func TestColumnLimit(t *testing.T) {
+	s, p, _ := setupBoard(t)
+	ctx := context.Background()
+	for range domain.MaxColumns - len(domain.DefaultColumns) {
+		if _, err := s.CreateColumn(ctx, 1, p.ID, "c"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.CreateColumn(ctx, 1, p.ID, "c"); !errors.Is(err, domain.ErrTooManyColumns) {
+		t.Errorf("over limit: %v", err)
+	}
+}
+
+func TestSetViewMode(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	newUser(t, s, 1)
+	if err := s.SetViewMode(ctx, 1, domain.ViewArticle); err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := s.GetUser(ctx, 1); u.ViewMode != domain.ViewArticle {
+		t.Errorf("view = %q", u.ViewMode)
+	}
+	if err := s.SetViewMode(ctx, 1, "bogus"); err == nil {
+		t.Error("CHECK constraint must reject unknown views")
+	}
+}

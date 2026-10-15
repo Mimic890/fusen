@@ -37,3 +37,15 @@ func TestLangFromCode(t *testing.T) {
 		}
 	}
 }
+
+func TestViewCodes(t *testing.T) {
+	for _, v := range Views {
+		got, ok := ParseViewCode(v.Code())
+		if !ok || got != v {
+			t.Errorf("round trip %q: %q %v", v, got, ok)
+		}
+	}
+	if _, ok := ParseViewCode("z"); ok {
+		t.Error("unknown code accepted")
+	}
+}

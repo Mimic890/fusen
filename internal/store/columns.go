@@ -66,10 +66,14 @@ func (s *Store) CreateColumn(ctx context.Context, userID, projectID int64, name 
 		if _, err := getProject(ctx, tx, userID, projectID); err != nil {
 			return err
 		}
+		var count int
 		if err := tx.QueryRowContext(ctx,
-			`SELECT COALESCE(MAX(position), -1) + 1 FROM columns WHERE project_id = ?`, projectID).
-			Scan(&c.Position); err != nil {
+			`SELECT COUNT(*), COALESCE(MAX(position), -1) + 1 FROM columns WHERE project_id = ?`, projectID).
+			Scan(&count, &c.Position); err != nil {
 			return fmt.Errorf("next column position: %w", err)
+		}
+		if count >= domain.MaxColumns {
+			return domain.ErrTooManyColumns
 		}
 		res, err := tx.ExecContext(ctx, `INSERT INTO columns (project_id, name, position) VALUES (?, ?, ?)`,
 			projectID, name, c.Position)
