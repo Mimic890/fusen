@@ -186,26 +186,6 @@ func ensureNotInbox(ctx context.Context, q querier, userID, id int64) error {
 	return nil
 }
 
-// ListColumns returns project columns in board order.
-func (s *Store) ListColumns(ctx context.Context, projectID int64) ([]domain.Column, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, project_id, name, position, is_done
-		FROM columns WHERE project_id = ? ORDER BY position, id`, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("list columns: %w", err)
-	}
-	defer rows.Close()
-
-	var out []domain.Column
-	for rows.Next() {
-		var c domain.Column
-		if err := rows.Scan(&c.ID, &c.ProjectID, &c.Name, &c.Position, &c.IsDone); err != nil {
-			return nil, fmt.Errorf("scan column: %w", err)
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
-}
-
 // DueSummary counts the user's open tasks that are overdue or due later today.
 // Tasks in archived projects are ignored.
 func (s *Store) DueSummary(ctx context.Context, userID int64, now time.Time, loc *time.Location) (domain.DueSummary, error) {

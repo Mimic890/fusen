@@ -86,14 +86,14 @@ func Archive(l i18n.Localizer, projects []domain.ProjectSummary) Screen {
 	}
 	var kb [][]models.InlineKeyboardButton
 	for _, p := range projects {
-		kb = append(kb, row(btn(projectLabel(p), cb.New(cb.KindProject, p.ID))))
+		kb = append(kb, row(btn(projectLabel(p), cb.New(cb.KindProjectManage, p.ID))))
 	}
 	kb = append(kb, row(btn(l.T("btn.projects"), cb.New(cb.KindHome))))
 	return Screen{Text: text, Keyboard: kb}
 }
 
 // Project renders the project management screen.
-func Project(l i18n.Localizer, p domain.Project, cols []domain.Column) Screen {
+func Project(l i18n.Localizer, p domain.Project, cols []domain.ColumnSummary) Screen {
 	names := make([]string, len(cols))
 	for i, c := range cols {
 		names[i] = Escape(c.Name)
@@ -106,39 +106,49 @@ func Project(l i18n.Localizer, p domain.Project, cols []domain.Column) Screen {
 	}
 	sb.WriteString(l.T("project.columns", "columns", strings.Join(names, " · ")))
 
-	kb := [][]models.InlineKeyboardButton{
-		row(btn(l.T("project.rename"), cb.New(cb.KindProjectRename, p.ID))),
-	}
-	back := cb.New(cb.KindHome)
+	kb := [][]models.InlineKeyboardButton{row(
+		btn(l.T("project.rename"), cb.New(cb.KindProjectRename, p.ID)),
+		btn(l.T("project.columns_btn"), cb.New(cb.KindColumns, p.ID)),
+	)}
+	back := btn(l.T("btn.board"), cb.New(cb.KindProject, p.ID))
 	if !p.IsInbox {
 		archive := btn(l.T("project.archive"), cb.New(cb.KindProjectArchive, p.ID, "1"))
 		if p.Archived {
 			archive = btn(l.T("project.unarchive"), cb.New(cb.KindProjectArchive, p.ID, "0"))
-			back = cb.New(cb.KindArchive)
+			back = btn(l.T("btn.back"), cb.New(cb.KindArchive))
 		}
 		kb = append(kb, row(archive, btn(l.T("project.delete"), cb.New(cb.KindProjectDelete, p.ID))))
 	}
-	kb = append(kb, row(btn(l.T("btn.back"), back)))
+	kb = append(kb, row(back))
 	return Screen{Text: sb.String(), Keyboard: kb}
 }
 
 // ConfirmDeleteProject asks to confirm project deletion.
 func ConfirmDeleteProject(l i18n.Localizer, p domain.Project) Screen {
+	return confirm(l, l.T("project.confirm_delete", "name", Escape(p.Name)),
+		cb.New(cb.KindProjectDelete, p.ID, cb.Confirm), cb.New(cb.KindProjectManage, p.ID))
+}
+
+func confirm(l i18n.Localizer, text string, yes, no cb.Data) Screen {
 	return Screen{
-		Text: l.T("project.confirm_delete", "name", Escape(p.Name)),
-		Keyboard: [][]models.InlineKeyboardButton{row(
-			btn(l.T("project.confirm_yes"), cb.New(cb.KindProjectDelete, p.ID, cb.Confirm)),
-			btn(l.T("btn.cancel"), cb.New(cb.KindProject, p.ID)),
-		)},
+		Text:     text,
+		Keyboard: [][]models.InlineKeyboardButton{row(btn(l.T("btn.confirm_delete"), yes), btn(l.T("btn.cancel"), no))},
 	}
 }
 
-// Prompt asks the user to send text, with a cancel button leading to cancel.
-func Prompt(l i18n.Localizer, text string, cancel cb.Data) Screen {
-	return Screen{
-		Text:     text,
-		Keyboard: [][]models.InlineKeyboardButton{row(btn(l.T("btn.cancel"), cancel))},
+// Prompt asks the user to send text. extra buttons are shown above Cancel.
+func Prompt(l i18n.Localizer, text string, cancel cb.Data, extra ...models.InlineKeyboardButton) Screen {
+	var kb [][]models.InlineKeyboardButton
+	if len(extra) > 0 {
+		kb = append(kb, extra)
 	}
+	kb = append(kb, row(btn(l.T("btn.cancel"), cancel)))
+	return Screen{Text: text, Keyboard: kb}
+}
+
+// Button builds an inline button with callback data.
+func Button(text string, data cb.Data) models.InlineKeyboardButton {
+	return btn(text, data)
 }
 
 // Stale replaces an outdated live screen.

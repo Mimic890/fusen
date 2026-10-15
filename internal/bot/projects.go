@@ -2,7 +2,6 @@ package bot
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	cb "github.com/Mimic890/fusen/internal/callback"
@@ -38,7 +37,7 @@ func (b *Bot) showHome(ctx context.Context, r *request, notice string) error {
 	return b.show(ctx, r, s.WithNotice(notice))
 }
 
-func (b *Bot) showProject(ctx context.Context, r *request, id int64, notice string) error {
+func (b *Bot) showProjectManage(ctx context.Context, r *request, id int64, notice string) error {
 	p, err := b.store.GetProject(ctx, r.user.TgID, id)
 	if err != nil {
 		return err
@@ -47,13 +46,10 @@ func (b *Bot) showProject(ctx context.Context, r *request, id int64, notice stri
 	if err != nil {
 		return err
 	}
-	if !p.Archived {
-		if err := b.store.SetCurrentProject(ctx, r.user.TgID, p.ID); err != nil {
-			return err
-		}
-	}
 	return b.show(ctx, r, views.Project(r.l, p, cols).WithNotice(notice))
 }
+
+func (b *Bot) onNoop(context.Context, *request) error { return nil }
 
 func (b *Bot) onHome(ctx context.Context, r *request) error {
 	return b.showHome(ctx, r, "")
@@ -72,18 +68,34 @@ func (b *Bot) onProject(ctx context.Context, r *request) error {
 	if err != nil {
 		return err
 	}
-	return b.showProject(ctx, r, id, "")
+	p, err := b.store.GetProject(ctx, r.user.TgID, id)
+	if err != nil {
+		return err
+	}
+	return b.showBoardOf(ctx, r, p, 0, 0, "")
+}
+
+func (b *Bot) onProjectManage(ctx context.Context, r *request) error {
+	id, err := r.data.ID(0)
+	if err != nil {
+		return err
+	}
+	return b.showProjectManage(ctx, r, id, "")
+}
+
+func (b *Bot) projectNewPrompt(r *request) views.Screen {
+	return views.Prompt(r.l, r.l.T("project.prompt_new"), cb.New(cb.KindHome))
 }
 
 func (b *Bot) onProjectNew(ctx context.Context, r *request) error {
 	if err := b.setState(ctx, r, cb.New(cb.KindProjectNew)); err != nil {
 		return err
 	}
-	return b.show(ctx, r, views.Prompt(r.l, r.l.T("project.prompt_new"), cb.New(cb.KindHome)))
+	return b.show(ctx, r, b.projectNewPrompt(r))
 }
 
 func (b *Bot) projectRenamePrompt(r *request, p domain.Project) views.Screen {
-	return views.Prompt(r.l, r.l.T("project.prompt_rename", "name", views.Escape(p.Name)), cb.New(cb.KindProject, p.ID))
+	return views.Prompt(r.l, r.l.T("project.prompt_rename", "name", views.Escape(p.Name)), cb.New(cb.KindProjectManage, p.ID))
 }
 
 func (b *Bot) onProjectRename(ctx context.Context, r *request) error {
@@ -115,7 +127,7 @@ func (b *Bot) onProjectArchive(ctx context.Context, r *request) error {
 		return b.showHome(ctx, r, "")
 	}
 	r.toast = r.l.T("project.restored")
-	return b.showProject(ctx, r, id, "")
+	return b.showProjectManage(ctx, r, id, "")
 }
 
 func (b *Bot) onProjectDelete(ctx context.Context, r *request) error {
@@ -141,17 +153,10 @@ func (b *Bot) onProjectDelete(ctx context.Context, r *request) error {
 	return b.show(ctx, r, views.ConfirmDeleteProject(r.l, p))
 }
 
-// isInputError reports whether err is a validation error the user can fix by
-// sending another message.
-func isInputError(err error) bool {
-	return errors.Is(err, domain.ErrEmptyName) || errors.Is(err, domain.ErrNameTooLong)
-}
-
 func (b *Bot) inputProjectNew(ctx context.Context, r *request, text string) error {
 	name, err := domain.NormalizeName(text)
 	if isInputError(err) {
-		prompt := views.Prompt(r.l, r.l.T("project.prompt_new"), cb.New(cb.KindHome))
-		return b.show(ctx, r, prompt.WithNotice(b.userError(r, err)))
+		return b.reprompt(ctx, r, b.projectNewPrompt(r), err)
 	}
 	p, err := b.store.CreateProject(ctx, r.user.TgID, name)
 	if err != nil {
@@ -160,7 +165,7 @@ func (b *Bot) inputProjectNew(ctx context.Context, r *request, text string) erro
 	if err := b.clearState(ctx, r); err != nil {
 		return err
 	}
-	return b.showProject(ctx, r, p.ID, r.l.T("project.created"))
+	return b.showBoardOf(ctx, r, p, 0, 0, r.l.T("project.created"))
 }
 
 func (b *Bot) inputProjectRename(ctx context.Context, r *request, text string) error {
@@ -174,7 +179,7 @@ func (b *Bot) inputProjectRename(ctx context.Context, r *request, text string) e
 	}
 	name, err := domain.NormalizeName(text)
 	if isInputError(err) {
-		return b.show(ctx, r, b.projectRenamePrompt(r, p).WithNotice(b.userError(r, err)))
+		return b.reprompt(ctx, r, b.projectRenamePrompt(r, p), err)
 	}
 	if err := b.store.RenameProject(ctx, r.user.TgID, p.ID, name); err != nil {
 		return err
@@ -182,5 +187,5 @@ func (b *Bot) inputProjectRename(ctx context.Context, r *request, text string) e
 	if err := b.clearState(ctx, r); err != nil {
 		return err
 	}
-	return b.showProject(ctx, r, p.ID, r.l.T("project.renamed"))
+	return b.showProjectManage(ctx, r, p.ID, r.l.T("project.renamed"))
 }

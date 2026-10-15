@@ -119,3 +119,13 @@ func (d Data) ID(i int) (int64, error) {
 	}
 	return id, nil
 }
+
+// Int decodes the i-th argument as a non-negative base36 number, returning 0
+// when it is missing or invalid. Use it for optional values such as page numbers.
+func (d Data) Int(i int) int {
+	n, err := strconv.ParseInt(d.Arg(i), 36, 32)
+	if err != nil || n < 0 {
+		return 0
+	}
+	return int(n)
+}

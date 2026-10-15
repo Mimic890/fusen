@@ -116,3 +116,13 @@ func TestStringPanicsOnInvalid(t *testing.T) {
 	}()
 	_ = New("p", "a:b").String()
 }
+
+func TestInt(t *testing.T) {
+	d := New("b", 1, 37, "-1", "zzzzzzzzzzzz")
+	cases := map[int]int{0: 1, 1: 37, 2: 0, 3: 0, 4: 0}
+	for i, want := range cases {
+		if got := d.Int(i); got != want {
+			t.Errorf("Int(%d) = %d, want %d", i, got, want)
+		}
+	}
+}

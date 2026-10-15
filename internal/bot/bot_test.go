@@ -148,23 +148,31 @@ func newHarness(t *testing.T, allowed ...int64) *harness {
 }
 
 func (h *harness) message(text string, msgID int) {
+	h.messageAs(userID, text, msgID)
+}
+
+func (h *harness) messageAs(uid int64, text string, msgID int) {
 	h.upd++
 	h.bot.handleUpdate(context.Background(), nil, &models.Update{ID: h.upd, Message: &models.Message{
 		ID:   msgID,
-		From: &models.User{ID: userID, LanguageCode: "ru"},
-		Chat: models.Chat{ID: userID, Type: models.ChatTypePrivate},
+		From: &models.User{ID: uid, LanguageCode: "ru"},
+		Chat: models.Chat{ID: uid, Type: models.ChatTypePrivate},
 		Text: text,
 	}})
 }
 
 func (h *harness) press(msgID int, data cb.Data) {
+	h.pressAs(userID, msgID, data)
+}
+
+func (h *harness) pressAs(uid int64, msgID int, data cb.Data) {
 	h.upd++
 	h.bot.handleUpdate(context.Background(), nil, &models.Update{ID: h.upd, CallbackQuery: &models.CallbackQuery{
 		ID:   "q",
-		From: models.User{ID: userID, LanguageCode: "ru"},
+		From: models.User{ID: uid, LanguageCode: "ru"},
 		Message: models.MaybeInaccessibleMessage{
 			Type:    models.MaybeInaccessibleMessageTypeMessage,
-			Message: &models.Message{ID: msgID, Chat: models.Chat{ID: userID, Type: models.ChatTypePrivate}},
+			Message: &models.Message{ID: msgID, Chat: models.Chat{ID: uid, Type: models.ChatTypePrivate}},
 		},
 		Data: data.String(),
 	}})
