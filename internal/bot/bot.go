@@ -61,17 +61,47 @@ func New(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logger) 
 func newBot(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logger, opts ...tgbot.Option) (*Bot, error) {
 	b := &Bot{store: st, i18n: tr, cfg: cfg, log: log}
 	b.routes = map[string]handler{
+		cb.KindNoop:           b.onNoop,
 		cb.KindHome:           b.onHome,
 		cb.KindArchive:        b.onArchive,
 		cb.KindProject:        b.onProject,
+		cb.KindProjectManage:  b.onProjectManage,
 		cb.KindProjectNew:     b.onProjectNew,
 		cb.KindProjectRename:  b.onProjectRename,
 		cb.KindProjectArchive: b.onProjectArchive,
 		cb.KindProjectDelete:  b.onProjectDelete,
+		cb.KindBoard:          b.onBoard,
+		cb.KindColumns:        b.onColumns,
+		cb.KindColumn:         b.onColumn,
+		cb.KindColumnNew:      b.onColumnNew,
+		cb.KindColumnRename:   b.onColumnRename,
+		cb.KindColumnMove:     b.onColumnMove,
+		cb.KindColumnDone:     b.onColumnDone,
+		cb.KindColumnDelete:   b.onColumnDelete,
+		cb.KindTaskNew:        b.onTaskNew,
+		cb.KindTask:           b.onTask,
+		cb.KindTaskMove:       b.onTaskMove,
+		cb.KindTaskEdit:       b.onTaskEdit,
+		cb.KindTaskTitle:      b.onTaskTitle,
+		cb.KindTaskDesc:       b.onTaskDesc,
+		cb.KindTaskTags:       b.onTaskTags,
+		cb.KindTaskPriority:   b.onTaskPriority,
+		cb.KindTaskDelete:     b.onTaskDelete,
+		cb.KindChecklist:      b.onChecklist,
+		cb.KindChecklistAdd:   b.onChecklistAdd,
+		cb.KindItemToggle:     b.onItemToggle,
+		cb.KindItemDelete:     b.onItemDelete,
 	}
 	b.inputs = map[string]inputHandler{
 		cb.KindProjectNew:    b.inputProjectNew,
 		cb.KindProjectRename: b.inputProjectRename,
+		cb.KindColumnNew:     b.inputColumnNew,
+		cb.KindColumnRename:  b.inputColumnRename,
+		cb.KindTaskNew:       b.inputTaskNew,
+		cb.KindTaskTitle:     b.inputTaskTitle,
+		cb.KindTaskDesc:      b.inputTaskDesc,
+		cb.KindTaskTags:      b.inputTaskTags,
+		cb.KindChecklistAdd:  b.inputChecklistAdd,
 	}
 
 	api, err := tgbot.New(cfg.BotToken, append([]tgbot.Option{
@@ -276,11 +306,46 @@ func (b *Bot) userError(r *request, err error) string {
 		return r.l.T("error.empty_name")
 	case errors.Is(err, domain.ErrNameTooLong):
 		return r.l.T("error.name_too_long", "max", domain.MaxNameLen)
+	case errors.Is(err, domain.ErrTitleTooLong):
+		return r.l.T("error.title_too_long", "max", domain.MaxTitleLen)
+	case errors.Is(err, domain.ErrDescriptionTooLong):
+		return r.l.T("error.description_too_long", "max", domain.MaxDescriptionLen)
+	case errors.Is(err, domain.ErrItemTooLong):
+		return r.l.T("error.item_too_long", "max", domain.MaxItemLen)
+	case errors.Is(err, domain.ErrTooManyItems):
+		return r.l.T("error.too_many_items", "max", domain.MaxChecklistItems)
+	case errors.Is(err, domain.ErrTooManyTags):
+		return r.l.T("error.too_many_tags", "max", domain.MaxTags)
+	case errors.Is(err, domain.ErrTagTooLong):
+		return r.l.T("error.tag_too_long", "max", domain.MaxTagLen)
 	case errors.Is(err, domain.ErrInboxProtected):
 		return r.l.T("error.inbox_protected")
+	case errors.Is(err, domain.ErrColumnNotEmpty):
+		return r.l.T("error.column_not_empty")
+	case errors.Is(err, domain.ErrLastColumn):
+		return r.l.T("error.last_column")
 	}
 	b.log.Error("handler failed", "user_id", r.user.TgID, "kind", r.data.Kind, "args", r.data.Args, "err", err)
 	return r.l.T("error.generic")
+}
+
+// isInputError reports whether err is a validation error the user can fix by
+// sending another message.
+func isInputError(err error) bool {
+	for _, e := range []error{
+		domain.ErrEmptyName, domain.ErrNameTooLong, domain.ErrTitleTooLong, domain.ErrDescriptionTooLong,
+		domain.ErrItemTooLong, domain.ErrTooManyItems, domain.ErrTooManyTags, domain.ErrTagTooLong,
+	} {
+		if errors.Is(err, e) {
+			return true
+		}
+	}
+	return false
+}
+
+// reprompt shows the prompt again with the validation error, keeping the pending input.
+func (b *Bot) reprompt(ctx context.Context, r *request, prompt views.Screen, err error) error {
+	return b.show(ctx, r, prompt.WithNotice(b.userError(r, err)))
 }
 
 func (b *Bot) setState(ctx context.Context, r *request, state cb.Data) error {
