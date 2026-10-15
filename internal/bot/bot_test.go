@@ -268,9 +268,9 @@ func TestCreateRenameArchiveDeleteProject(t *testing.T) {
 	live := h.live()
 	h.api.take()
 
-	// Plain text without pending input is left alone.
+	// Plain text without pending input is quick input (covered in quick_test.go).
 	h.message("hello", 501)
-	if got := methods(h.api.take()); got != "" {
+	if got := methods(h.api.take()); got != "editMessageText,deleteMessage" {
 		t.Fatalf("idle text: %s", got)
 	}
 

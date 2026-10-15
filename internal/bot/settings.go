@@ -148,6 +148,9 @@ func (b *Bot) onRemind(ctx context.Context, r *request) error {
 	if err := b.store.SetRemindBefore(ctx, r.user.TgID, m); err != nil {
 		return err
 	}
+	if err := b.store.RescheduleDeadlines(ctx, r.user.TgID, m, time.Now()); err != nil {
+		return err
+	}
 	r.user.RemindBeforeMin = m
 	r.toast = r.l.T("settings.saved")
 	return b.showSettings(ctx, r, "")

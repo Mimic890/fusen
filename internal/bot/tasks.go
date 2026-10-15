@@ -319,17 +319,21 @@ func (b *Bot) inputTaskNew(ctx context.Context, r *request, text string) error {
 	if err != nil {
 		return err
 	}
-	titles, err := normalizeAll(domain.SplitLines(text), domain.NormalizeTitle)
+	// Board input understands the quick-add syntax too: #tags, !priority, !deadline.
+	now := time.Now()
+	tasks, err := parseLines(text, now, r.user.Location())
 	if isInputError(err) {
 		return b.reprompt(ctx, r, b.taskNewPrompt(r, c), err)
+	} else if err != nil {
+		return err
 	}
-	if _, err := b.store.CreateTasks(ctx, r.user.TgID, c.ID, titles); err != nil {
+	if _, err := b.store.AddTasks(ctx, r.user.TgID, c.ID, tasks, r.user.RemindBeforeMin, now); err != nil {
 		return err
 	}
 	if err := b.clearState(ctx, r); err != nil {
 		return err
 	}
-	return b.showBoard(ctx, r, c.ID, lastPage, r.l.T("task.created", "count", strconv.Itoa(len(titles))))
+	return b.showBoard(ctx, r, c.ID, lastPage, r.l.T("task.created", "count", strconv.Itoa(len(tasks))))
 }
 
 // inputTaskField handles text input for a single task field.
