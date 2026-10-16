@@ -18,6 +18,7 @@ import (
 	"github.com/Mimic890/fusen/internal/config"
 	"github.com/Mimic890/fusen/internal/domain"
 	"github.com/Mimic890/fusen/internal/i18n"
+	"github.com/Mimic890/fusen/internal/parser"
 	"github.com/Mimic890/fusen/internal/store"
 	"github.com/Mimic890/fusen/internal/views"
 )
@@ -44,6 +45,8 @@ type request struct {
 	user domain.User
 	l    i18n.Localizer
 	data cb.Data // callback payload or decoded pending state
+	// msgID is the message whose button was pressed.
+	msgID int
 	// toast is shown as the callback query answer.
 	toast string
 }
@@ -94,6 +97,12 @@ func newBot(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logge
 		cb.KindTimezone:       b.onTimezone,
 		cb.KindDigest:         b.onDigest,
 		cb.KindRemind:         b.onRemind,
+		cb.KindTaskDue:        b.onTaskDue,
+		cb.KindTaskProject:    b.onTaskProject,
+		cb.KindReminders:      b.onReminders,
+		cb.KindReminderDelete: b.onReminderDelete,
+		cb.KindReminderAction: b.onReminderAction,
+		cb.KindNotifyOpen:     b.onNotifyOpen,
 		cb.KindChecklist:      b.onChecklist,
 		cb.KindChecklistAdd:   b.onChecklistAdd,
 		cb.KindItemToggle:     b.onItemToggle,
@@ -111,6 +120,8 @@ func newBot(cfg config.Config, st *store.Store, tr *i18n.Bundle, log *slog.Logge
 		cb.KindChecklistAdd:  b.inputChecklistAdd,
 		cb.KindTimezone:      b.inputTimezone,
 		cb.KindDigest:        b.inputDigest,
+		cb.KindTaskDue:       b.inputTaskDue,
+		cb.KindReminders:     b.inputReminder,
 	}
 
 	api, err := tgbot.New(cfg.BotToken, append([]tgbot.Option{
@@ -200,6 +211,8 @@ func (b *Bot) onMessage(ctx context.Context, m *models.Message) {
 		b.cmdSettings(ctx, r, m)
 	case r.user.State != "":
 		b.onInput(ctx, r, m)
+	case strings.TrimSpace(m.Text) != "" && command(m.Text) == "":
+		b.onQuickAdd(ctx, r, m)
 	}
 }
 
@@ -281,10 +294,19 @@ func (b *Bot) onCallback(ctx context.Context, q *models.CallbackQuery) {
 		return
 	}
 	r.data = data
+	r.msgID = msgID
 
 	if data.Kind == cb.KindReopen {
 		if err := b.reopen(ctx, r); err != nil {
 			b.log.Error("reopen", "user_id", r.user.TgID, "err", err)
+		}
+		return
+	}
+
+	// Notification buttons act on their own message, wherever the live screen is.
+	if notificationKinds[data.Kind] {
+		if err := b.routes[data.Kind](ctx, r); err != nil {
+			r.toast = b.userError(r, err)
 		}
 		return
 	}
@@ -309,6 +331,9 @@ func (b *Bot) onCallback(ctx context.Context, q *models.CallbackQuery) {
 		r.toast = b.userError(r, err)
 	}
 }
+
+// notificationKinds are callback kinds of reminder and digest messages.
+var notificationKinds = map[string]bool{cb.KindReminderAction: true, cb.KindNotifyOpen: true}
 
 // userError maps an error to a message for the user, logging unexpected ones.
 func (b *Bot) userError(r *request, err error) string {
@@ -341,6 +366,14 @@ func (b *Bot) userError(r *request, err error) string {
 		return r.l.T("error.bad_timezone")
 	case errors.Is(err, domain.ErrBadClock):
 		return r.l.T("error.bad_clock")
+	case errors.Is(err, parser.ErrBadDate):
+		return r.l.T("error.bad_date")
+	case errors.Is(err, domain.ErrPastTime):
+		return r.l.T("error.past_time")
+	case errors.Is(err, domain.ErrNoDoneColumn):
+		return r.l.T("error.no_done_column")
+	case errors.Is(err, domain.ErrTooManyReminders):
+		return r.l.T("error.too_many_reminders", "max", domain.MaxReminders)
 	case errors.Is(err, domain.ErrTooManyColumns):
 		return r.l.T("error.too_many_columns", "max", domain.MaxColumns)
 	}
@@ -354,7 +387,7 @@ func isInputError(err error) bool {
 	for _, e := range []error{
 		domain.ErrEmptyName, domain.ErrNameTooLong, domain.ErrTitleTooLong, domain.ErrDescriptionTooLong,
 		domain.ErrItemTooLong, domain.ErrTooManyItems, domain.ErrTooManyTags, domain.ErrTagTooLong,
-		domain.ErrBadTimezone, domain.ErrBadClock,
+		domain.ErrBadTimezone, domain.ErrBadClock, parser.ErrBadDate, domain.ErrPastTime, domain.ErrTooManyReminders,
 	} {
 		if errors.Is(err, e) {
 			return true

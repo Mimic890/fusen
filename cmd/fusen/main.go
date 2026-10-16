@@ -12,6 +12,7 @@ import (
 	"github.com/Mimic890/fusen/internal/bot"
 	"github.com/Mimic890/fusen/internal/config"
 	"github.com/Mimic890/fusen/internal/i18n"
+	"github.com/Mimic890/fusen/internal/scheduler"
 	"github.com/Mimic890/fusen/internal/store"
 	"github.com/Mimic890/fusen/locales"
 )
@@ -52,6 +53,7 @@ func run() error {
 	}
 
 	log.Info("fusen started", "db", cfg.DBPath, "default_tz", cfg.DefaultTZ, "allowlist", len(cfg.AllowedUserIDs))
+	go scheduler.New(st, b, log).Run(ctx)
 	b.Run(ctx)
 	log.Info("fusen stopped")
 	return nil

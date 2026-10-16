@@ -80,6 +80,22 @@ func TestLiveRichViews(t *testing.T) {
 			DigestTime: "09:00", RemindBeforeMin: 90}, time.Now()),
 		"timezone picker": views.TimezonePicker(l, domain.User{Timezone: "UTC"}, time.Now()),
 	}
+	task := liveBoard([]int{1}, 20).Tasks[0].Task
+	soon := time.Now().Add(time.Hour)
+	task.DueAt = &soon
+	allDay := task
+	allDay.DueAllDay = true
+	item := domain.DigestItem{Task: task, ProjectName: "P"}
+	card := views.Card{Task: task, Project: domain.Project{Name: "P"}, Column: domain.Column{Name: "C"}, Loc: time.UTC}
+	for name, s := range map[string]views.Screen{
+		"reminder notice": views.ReminderNotice(l, domain.ReminderJob{Reminder: domain.Reminder{ID: 1, Kind: domain.ReminderDeadline},
+			Task: task, ProjectName: "P"}, time.UTC),
+		"digest":      views.DigestNotice(l, domain.Digest{Overdue: []domain.DigestItem{item}, Today: []domain.DigestItem{{Task: allDay, ProjectName: "P"}}}, time.UTC),
+		"quick added": views.QuickAdded(l, []domain.Task{task, allDay}, domain.Project{Name: "P"}, domain.Column{ID: 1, Name: "C"}, time.UTC),
+		"reminders":   views.Reminders(l, card, []domain.Reminder{{ID: 1, RemindAt: soon, Kind: domain.ReminderCustom}, {ID: 2, RemindAt: soon, Kind: domain.ReminderDeadline}}),
+	} {
+		screens[name] = s
+	}
 
 	var sent []int
 	defer func() {

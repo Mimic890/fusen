@@ -210,3 +210,16 @@ func (s *Store) DueSummary(ctx context.Context, userID int64, now time.Time, loc
 	}
 	return ds, nil
 }
+
+// GetInbox returns the user's inbox project.
+func (s *Store) GetInbox(ctx context.Context, userID int64) (domain.Project, error) {
+	p, err := scanProject(s.db.QueryRowContext(ctx,
+		`SELECT `+projectCols+` FROM projects p WHERE p.user_id = ? AND p.is_inbox = 1`, userID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return p, domain.ErrNotFound
+	}
+	if err != nil {
+		return p, fmt.Errorf("get inbox: %w", err)
+	}
+	return p, nil
+}

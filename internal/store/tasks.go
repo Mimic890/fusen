@@ -11,16 +11,21 @@ import (
 )
 
 const taskCols = `t.id, t.project_id, t.column_id, t.title, t.description, t.priority,
-	t.due_at, t.position, t.created_at, t.updated_at, t.done_at`
+	t.due_at, t.due_all_day, t.position, t.created_at, t.updated_at, t.done_at`
 
 func scanTask(r rowScanner, extra ...any) (domain.Task, error) {
+	return scanTaskAfter(r, nil, extra...)
+}
+
+// scanTaskAfter scans a row of the form: before..., taskCols, extra...
+func scanTaskAfter(r rowScanner, before []any, extra ...any) (domain.Task, error) {
 	var (
 		t                    domain.Task
 		dueAt, doneAt        sql.NullInt64
 		createdAt, updatedAt int64
 	)
-	dest := append([]any{&t.ID, &t.ProjectID, &t.ColumnID, &t.Title, &t.Description, &t.Priority,
-		&dueAt, &t.Position, &createdAt, &updatedAt, &doneAt}, extra...)
+	dest := append(append(before, &t.ID, &t.ProjectID, &t.ColumnID, &t.Title, &t.Description, &t.Priority,
+		&dueAt, &t.DueAllDay, &t.Position, &createdAt, &updatedAt, &doneAt), extra...)
 	if err := r.Scan(dest...); err != nil {
 		return t, err
 	}
@@ -114,27 +119,35 @@ func (s *Store) ListColumnTasks(ctx context.Context, columnID int64, offset, lim
 
 // CreateTasks appends tasks with the given titles to the end of a column owned by the user.
 func (s *Store) CreateTasks(ctx context.Context, userID, columnID int64, titles []string) ([]domain.Task, error) {
+	tasks := make([]domain.NewTask, len(titles))
+	for i, t := range titles {
+		tasks[i] = domain.NewTask{Title: t}
+	}
+	return s.AddTasks(ctx, userID, columnID, tasks, 0, time.Now())
+}
+
+// AddTasks appends tasks to the end of a column owned by the user, with their
+// tags and deadline reminders (remindBefore minutes before the deadline).
+func (s *Store) AddTasks(ctx context.Context, userID, columnID int64, tasks []domain.NewTask, remindBefore int, now time.Time) ([]domain.Task, error) {
 	var out []domain.Task
 	err := s.inTx(ctx, func(tx *sql.Tx) error {
 		c, err := getColumn(ctx, tx, userID, columnID)
 		if err != nil {
 			return err
 		}
-		var pos int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE column_id = ?`, c.ID).Scan(&pos); err != nil {
-			return fmt.Errorf("next task position: %w", err)
+		pos, err := nextTaskPosition(ctx, tx, c.ID)
+		if err != nil {
+			return err
 		}
-
-		now := time.Now()
 		var doneAt any
 		if c.IsDone {
 			doneAt = now.Unix()
 		}
-		for i, title := range titles {
+		for i, nt := range tasks {
 			res, err := tx.ExecContext(ctx, `INSERT INTO tasks
-				(project_id, column_id, title, position, created_at, updated_at, done_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)`, c.ProjectID, c.ID, title, pos+i, now.Unix(), now.Unix(), doneAt)
+				(project_id, column_id, title, priority, due_at, due_all_day, position, created_at, updated_at, done_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, c.ProjectID, c.ID, nt.Title, int(nt.Priority),
+				unixOrNil(nt.DueAt), boolInt(nt.DueAllDay), pos+i, now.Unix(), now.Unix(), doneAt)
 			if err != nil {
 				return fmt.Errorf("insert task: %w", err)
 			}
@@ -142,11 +155,130 @@ func (s *Store) CreateTasks(ctx context.Context, userID, columnID int64, titles 
 			if err != nil {
 				return err
 			}
-			out = append(out, domain.Task{ID: id, ProjectID: c.ProjectID, ColumnID: c.ID, Title: title, Position: pos + i})
+			if err := setTags(ctx, tx, userID, id, nt.Tags); err != nil {
+				return err
+			}
+			if nt.DueAt != nil && !c.IsDone {
+				if err := scheduleDeadline(ctx, tx, id, *nt.DueAt, nt.DueAllDay, remindBefore, now); err != nil {
+					return err
+				}
+			}
+			out = append(out, domain.Task{ID: id, ProjectID: c.ProjectID, ColumnID: c.ID, Title: nt.Title,
+				Priority: nt.Priority, Tags: nt.Tags, DueAt: nt.DueAt, DueAllDay: nt.DueAllDay, Position: pos + i})
 		}
 		return nil
 	})
 	return out, err
+}
+
+func nextTaskPosition(ctx context.Context, q querier, columnID int64) (int, error) {
+	var pos int
+	if err := q.QueryRowContext(ctx,
+		`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE column_id = ?`, columnID).Scan(&pos); err != nil {
+		return 0, fmt.Errorf("next task position: %w", err)
+	}
+	return pos, nil
+}
+
+func unixOrNil(t *time.Time) any {
+	if t == nil {
+		return nil
+	}
+	return t.Unix()
+}
+
+// SetTaskDue sets or clears (nil) a task deadline and reschedules its deadline reminder.
+func (s *Store) SetTaskDue(ctx context.Context, userID, id int64, due *time.Time, allDay bool, remindBefore int, now time.Time) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		t, err := getTask(ctx, tx, userID, id)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE tasks SET due_at = ?, due_all_day = ?, updated_at = ? WHERE id = ?`,
+			unixOrNil(due), boolInt(due != nil && allDay), now.Unix(), id); err != nil {
+			return fmt.Errorf("set due: %w", err)
+		}
+		if err := clearDeadlineReminder(ctx, tx, id); err != nil {
+			return err
+		}
+		if due == nil || t.DoneAt != nil {
+			return nil
+		}
+		return scheduleDeadline(ctx, tx, id, *due, allDay, remindBefore, now)
+	})
+}
+
+// MoveTaskToProject moves a task to the end of the first column of another
+// project owned by the user. done_at follows the target column's kind.
+func (s *Store) MoveTaskToProject(ctx context.Context, userID, id, projectID int64, now time.Time) (domain.Column, error) {
+	var target domain.Column
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		t, err := getTask(ctx, tx, userID, id)
+		if err != nil {
+			return err
+		}
+		if _, err := getProject(ctx, tx, userID, projectID); err != nil {
+			return err
+		}
+		target, err = scanColumn(tx.QueryRowContext(ctx, `SELECT `+columnCols+` FROM columns c
+			WHERE c.project_id = ? ORDER BY c.position, c.id LIMIT 1`, projectID))
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return moveTo(ctx, tx, t, target, now)
+	})
+	return target, err
+}
+
+// moveTo puts a task at the end of column c, keeping done_at consistent.
+func moveTo(ctx context.Context, tx *sql.Tx, t domain.Task, c domain.Column, now time.Time) error {
+	pos, err := nextTaskPosition(ctx, tx, c.ID)
+	if err != nil {
+		return err
+	}
+	var doneAt any
+	if c.IsDone {
+		doneAt = now.Unix()
+		if t.DoneAt != nil {
+			doneAt = t.DoneAt.Unix()
+		}
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE tasks SET project_id = ?, column_id = ?, position = ?, done_at = ?, updated_at = ?
+		WHERE id = ?`, c.ProjectID, c.ID, pos, doneAt, now.Unix(), t.ID)
+	return err
+}
+
+// CompleteTask moves a task to the first done column of its project and
+// returns that column. A task already in a done column stays where it is.
+func (s *Store) CompleteTask(ctx context.Context, userID, id int64, now time.Time) (domain.Column, error) {
+	var target domain.Column
+	err := s.inTx(ctx, func(tx *sql.Tx) error {
+		t, err := getTask(ctx, tx, userID, id)
+		if err != nil {
+			return err
+		}
+		cur, err := getColumn(ctx, tx, userID, t.ColumnID)
+		if err != nil {
+			return err
+		}
+		if cur.IsDone {
+			target = cur
+			return nil
+		}
+		target, err = scanColumn(tx.QueryRowContext(ctx, `SELECT `+columnCols+` FROM columns c
+			WHERE c.project_id = ? AND c.is_done = 1 ORDER BY c.position, c.id LIMIT 1`, t.ProjectID))
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ErrNoDoneColumn
+		}
+		if err != nil {
+			return err
+		}
+		return moveTo(ctx, tx, t, target, now)
+	})
+	return target, err
 }
 
 // updateTask runs an UPDATE on a task owned by the user and bumps updated_at.
@@ -187,20 +319,27 @@ func (s *Store) SetTaskTags(ctx context.Context, userID, id int64, tags []string
 		if _, err := tx.ExecContext(ctx, `DELETE FROM task_tags WHERE task_id = ?`, id); err != nil {
 			return err
 		}
-		for _, tag := range tags {
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO tags (user_id, name) VALUES (?, ?) ON CONFLICT (user_id, name) DO NOTHING`,
-				userID, tag); err != nil {
-				return fmt.Errorf("insert tag: %w", err)
-			}
-			if _, err := tx.ExecContext(ctx, `INSERT INTO task_tags (task_id, tag_id)
-				SELECT ?, id FROM tags WHERE user_id = ? AND name = ?`, id, userID, tag); err != nil {
-				return fmt.Errorf("link tag: %w", err)
-			}
+		if err := setTags(ctx, tx, userID, id, tags); err != nil {
+			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE tasks SET updated_at = ? WHERE id = ?`, time.Now().Unix(), id)
-		return err
+		return touchTask(ctx, tx, id)
 	})
+}
+
+// setTags links tags (created on demand) to a task.
+func setTags(ctx context.Context, tx *sql.Tx, userID, taskID int64, tags []string) error {
+	for _, tag := range tags {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO tags (user_id, name) VALUES (?, ?) ON CONFLICT (user_id, name) DO NOTHING`,
+			userID, tag); err != nil {
+			return fmt.Errorf("insert tag: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO task_tags (task_id, tag_id)
+			SELECT ?, id FROM tags WHERE user_id = ? AND name = ?`, taskID, userID, tag); err != nil {
+			return fmt.Errorf("link tag: %w", err)
+		}
+	}
+	return nil
 }
 
 // MoveTask moves a task to the end of the neighbouring column. At the board
@@ -219,22 +358,7 @@ func (s *Store) MoveTask(ctx context.Context, userID, id int64, dir domain.Direc
 		if target, err = neighbourColumn(ctx, tx, cur, dir); err != nil {
 			return err
 		}
-		var pos int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COALESCE(MAX(position), -1) + 1 FROM tasks WHERE column_id = ?`, target.ID).Scan(&pos); err != nil {
-			return err
-		}
-		now := time.Now().Unix()
-		var doneAt any
-		if target.IsDone {
-			doneAt = now
-			if t.DoneAt != nil {
-				doneAt = t.DoneAt.Unix()
-			}
-		}
-		_, err = tx.ExecContext(ctx, `UPDATE tasks SET column_id = ?, position = ?, done_at = ?, updated_at = ?
-			WHERE id = ?`, target.ID, pos, doneAt, now, id)
-		return err
+		return moveTo(ctx, tx, t, target, time.Now())
 	})
 	return target, err
 }

@@ -79,3 +79,35 @@ func TestIsOverdue(t *testing.T) {
 		}
 	}
 }
+
+func TestDeadlineReminderAt(t *testing.T) {
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	cases := []struct {
+		name   string
+		due    time.Time
+		allDay bool
+		before int
+		want   time.Time
+		ok     bool
+	}{
+		{"regular", now.Add(3 * time.Hour), false, 60, now.Add(2 * time.Hour), true},
+		{"too close fires at the deadline", now.Add(30 * time.Minute), false, 60, now.Add(30 * time.Minute), true},
+		{"past deadline", now.Add(-time.Minute), false, 60, time.Time{}, false},
+		{"all day", now.Add(3 * time.Hour), true, 60, time.Time{}, false},
+		{"disabled", now.Add(3 * time.Hour), false, 0, time.Time{}, false},
+	}
+	for _, c := range cases {
+		got, ok := DeadlineReminderAt(c.due, c.allDay, c.before, now)
+		if ok != c.ok || !got.Equal(c.want) {
+			t.Errorf("%s: got %v %v", c.name, got, ok)
+		}
+	}
+}
+
+func TestEndOfDay(t *testing.T) {
+	loc, _ := time.LoadLocation("Europe/Moscow")
+	got := EndOfDay(time.Date(2026, 10, 15, 22, 0, 0, 0, time.UTC), loc) // 01:00 on the 16th in Moscow
+	if got.Format("2006-01-02 15:04:05") != "2026-10-16 23:59:59" || got.Location() != loc {
+		t.Errorf("got %v", got)
+	}
+}

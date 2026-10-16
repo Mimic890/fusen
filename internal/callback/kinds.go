@@ -34,6 +34,15 @@ const (
 	KindTaskTags     = "tg" // tg:<id> prompt, tg:<id>:x clear
 	KindTaskPriority = "tp" // tp:<id> picker, tp:<id>:<0-3> set
 	KindTaskDelete   = "tx" // tx:<id> ask, tx:<id>:y confirm
+	KindTaskDue      = "du" // du:<id> prompt, du:<id>:x clear
+	KindTaskProject  = "mp" // mp:<id> project picker, mp:<id>:<project id> move
+
+	KindReminders      = "rm" // rm:<task id> reminders (also awaits a typed time), rm:<task id>:<h1|h3|tm> add preset
+	KindReminderDelete = "rx" // rx:<reminder id>
+
+	// Notification actions work from any message, not only the live screen.
+	KindReminderAction = "ra" // ra:<reminder id>:<d|h|t> done, +1 hour, tomorrow
+	KindNotifyOpen     = "no" // no:<task id> open the task card as a new live screen
 
 	KindSettings = "s"  // settings screen
 	KindSetLang  = "sl" // sl:<en|ru>
@@ -54,6 +63,14 @@ const (
 	Clear      = "x" // clears a field
 	DeleteMode = "d" // checklist delete mode
 	Off        = "off"
-	DirLeft    = "l"
-	DirRight   = "r"
+
+	// Reminder presets and notification actions.
+	InHour      = "h1"
+	In3Hours    = "h3"
+	Tomorrow    = "tm"
+	ActDone     = "d"
+	ActHour     = "h"
+	ActTomorrow = "t"
+	DirLeft     = "l"
+	DirRight    = "r"
 )

@@ -58,15 +58,16 @@ func (s *Store) GetUser(ctx context.Context, tgID int64) (domain.User, error) {
 	var (
 		u         domain.User
 		digest    sql.NullString
+		sentOn    sql.NullString
 		liveMsg   sql.NullInt64
 		curProj   sql.NullInt64
 		viewMode  string
 		createdAt int64
 	)
-	err := s.db.QueryRowContext(ctx, `SELECT tg_id, lang, view_mode, timezone, digest_time,
+	err := s.db.QueryRowContext(ctx, `SELECT tg_id, lang, view_mode, timezone, digest_time, digest_sent_on,
 			remind_before_min, live_message_id, state, current_project_id, created_at
 		FROM users WHERE tg_id = ?`, tgID).
-		Scan(&u.TgID, &u.Lang, &viewMode, &u.Timezone, &digest,
+		Scan(&u.TgID, &u.Lang, &viewMode, &u.Timezone, &digest, &sentOn,
 			&u.RemindBeforeMin, &liveMsg, &u.State, &curProj, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return u, domain.ErrNotFound
@@ -76,6 +77,7 @@ func (s *Store) GetUser(ctx context.Context, tgID int64) (domain.User, error) {
 	}
 	u.ViewMode = domain.ViewMode(viewMode)
 	u.DigestTime = digest.String
+	u.DigestSentOn = sentOn.String
 	u.LiveMessageID = int(liveMsg.Int64)
 	u.CurrentProjectID = curProj.Int64
 	u.CreatedAt = time.Unix(createdAt, 0)

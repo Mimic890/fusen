@@ -3,6 +3,7 @@ package i18n
 import (
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 
@@ -83,4 +84,19 @@ func diff(a, b []string) []string {
 
 func sameSet(a, b []string) bool {
 	return len(diff(a, b)) == 0 && len(diff(b, a)) == 0
+}
+
+// Error strings are shown in toasts and escaped notices, so they must be plain text.
+func TestErrorStringsArePlainText(t *testing.T) {
+	b, err := Load(locales.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lang := range b.Langs() {
+		for _, k := range b.Keys(lang) {
+			if s, _ := b.Raw(lang, k); strings.HasPrefix(k, "error.") && strings.ContainsAny(s, "<>") {
+				t.Errorf("%s %s contains markup: %q", lang, k, s)
+			}
+		}
+	}
 }

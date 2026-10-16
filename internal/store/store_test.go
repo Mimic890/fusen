@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Mimic890/fusen/internal/domain"
+	"github.com/Mimic890/fusen/migrations"
 )
 
 func openTest(t *testing.T) *Store {
@@ -53,9 +54,13 @@ func TestMigrateIdempotent(t *testing.T) {
 	if err := migrate(ctx, s.db, fsys); err != nil {
 		t.Fatal(err)
 	}
+	all, err := loadMigrations(migrations.FS)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != 1 {
-		t.Fatalf("schema_migrations rows = %d, err %v", n, err)
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != len(all) {
+		t.Fatalf("schema_migrations rows = %d, want %d, err %v", n, len(all), err)
 	}
 }
 

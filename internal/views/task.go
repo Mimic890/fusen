@@ -12,14 +12,37 @@ import (
 	"github.com/Mimic890/fusen/internal/i18n"
 )
 
-// dateLayout formats deadlines on the card.
-const dateLayout = "02.01.2006 15:04"
+// Fallback layouts for date_time entities on clients that cannot render them.
+const (
+	dateLayout = "02.01.2006 15:04"
+	dayLayout  = "02.01.2006"
+)
 
 // TgTime renders a date_time entity: Telegram shows it in the viewer's locale
 // and timezone. The fallback text uses loc for clients without support.
 func TgTime(t time.Time, loc *time.Location) string {
 	return `<tg-time unix="` + strconv.FormatInt(t.Unix(), 10) + `" format="wdt">` +
 		t.In(loc).Format(dateLayout) + `</tg-time>`
+}
+
+// TgDate renders a date without a time of day.
+func TgDate(t time.Time, loc *time.Location) string {
+	return `<tg-time unix="` + strconv.FormatInt(t.Unix(), 10) + `" format="wd">` +
+		t.In(loc).Format(dayLayout) + `</tg-time>`
+}
+
+// TgRelative renders a time relative to now ("in 1 hour").
+func TgRelative(t time.Time, loc *time.Location) string {
+	return `<tg-time unix="` + strconv.FormatInt(t.Unix(), 10) + `" format="r">` +
+		t.In(loc).Format(dateLayout) + `</tg-time>`
+}
+
+// TgDue renders a task deadline: a date for all-day deadlines, otherwise date and time.
+func TgDue(t domain.Task, loc *time.Location) string {
+	if t.DueAllDay {
+		return TgDate(*t.DueAt, loc)
+	}
+	return TgTime(*t.DueAt, loc)
 }
 
 // Card is the data for a task card and its sub-screens.
@@ -76,7 +99,7 @@ func cardText(l i18n.Localizer, c Card) string {
 	sb.WriteString("\n")
 
 	if t.DueAt != nil {
-		sb.WriteString("\n" + l.T("task.due", "date", TgTime(*t.DueAt, c.Loc)))
+		sb.WriteString("\n" + l.T("task.due", "date", TgDue(t, c.Loc)))
 		if t.IsOverdue(c.Now) {
 			sb.WriteString(" ⏰ " + l.T("task.overdue"))
 		}
@@ -127,6 +150,7 @@ func TaskCard(l i18n.Localizer, c Card) Screen {
 		row(
 			btn(l.T("task.edit"), cb.New(cb.KindTaskEdit, t.ID)),
 			btn(l.T("task.checklist_btn"), cb.New(cb.KindChecklist, t.ID)),
+			btn(l.T("task.reminders_btn"), cb.New(cb.KindReminders, t.ID)),
 		),
 		row(
 			btn(l.T("task.delete"), cb.New(cb.KindTaskDelete, t.ID)),
@@ -145,8 +169,12 @@ func TaskEdit(l i18n.Localizer, c Card) Screen {
 			btn(l.T("task.edit_desc"), cb.New(cb.KindTaskDesc, id)),
 		),
 		row(
+			btn(l.T("task.edit_due"), cb.New(cb.KindTaskDue, id)),
 			btn(l.T("task.edit_priority"), cb.New(cb.KindTaskPriority, id)),
+		),
+		row(
 			btn(l.T("task.edit_tags"), cb.New(cb.KindTaskTags, id)),
+			btn(l.T("task.edit_project"), cb.New(cb.KindTaskProject, id)),
 		),
 		row(backToCard(l, c.Task)),
 	}}
@@ -209,6 +237,52 @@ func ChecklistAdd(l i18n.Localizer, c Card) Screen {
 	return Screen{Text: text, Keyboard: [][]models.InlineKeyboardButton{
 		row(btn(l.T("btn.done"), cb.New(cb.KindChecklist, c.Task.ID))),
 	}}
+}
+
+// ProjectPicker lists the other active projects to move a task to.
+func ProjectPicker(l i18n.Localizer, c Card, projects []domain.ProjectSummary) Screen {
+	text := cardHeader(c) + "\n\n" + l.T("task.move_to")
+	var kb [][]models.InlineKeyboardButton
+	for _, p := range projects {
+		if p.ID == c.Task.ProjectID {
+			continue
+		}
+		kb = append(kb, row(btn(projectLabel(p), cb.New(cb.KindTaskProject, c.Task.ID, p.ID))))
+	}
+	kb = append(kb, row(btn(l.T("btn.back"), cb.New(cb.KindTaskEdit, c.Task.ID))))
+	return Screen{Text: text, Keyboard: kb}
+}
+
+// Reminders lists the pending reminders of a task with presets to add one.
+// The user can also type a time while this screen is shown.
+func Reminders(l i18n.Localizer, c Card, reminders []domain.Reminder) Screen {
+	var sb strings.Builder
+	sb.WriteString(cardHeader(c) + "\n\n" + l.T("reminders.title"))
+	if len(reminders) == 0 {
+		sb.WriteString("\n" + l.T("reminders.empty"))
+	}
+	for _, r := range reminders {
+		line := "🔔 " + TgTime(r.RemindAt, c.Loc)
+		if r.Kind == domain.ReminderDeadline {
+			line += " · " + l.T("reminders.deadline")
+		}
+		sb.WriteString("\n" + line)
+	}
+	sb.WriteString("\n\n" + l.T("reminders.prompt"))
+
+	id := c.Task.ID
+	kb := [][]models.InlineKeyboardButton{row(
+		btn(l.T("reminders.in_hour"), cb.New(cb.KindReminders, id, cb.InHour)),
+		btn(l.T("reminders.in_3_hours"), cb.New(cb.KindReminders, id, cb.In3Hours)),
+		btn(l.T("reminders.tomorrow"), cb.New(cb.KindReminders, id, cb.Tomorrow)),
+	)}
+	for _, r := range reminders {
+		if r.Kind == domain.ReminderCustom {
+			kb = append(kb, row(btn("🗑 "+r.RemindAt.In(c.Loc).Format(dateLayout), cb.New(cb.KindReminderDelete, r.ID))))
+		}
+	}
+	kb = append(kb, row(backToCard(l, c.Task)))
+	return Screen{Text: sb.String(), Keyboard: kb}
 }
 
 // ConfirmDeleteTask asks to confirm task deletion.

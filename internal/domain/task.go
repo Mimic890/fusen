@@ -18,6 +18,8 @@ const (
 	MaxTagLen         = 32
 	// MaxColumns matches the rich message table limit of 20 columns.
 	MaxColumns = 20
+	// MaxReminders limits custom reminders per task.
+	MaxReminders = 10
 )
 
 var (
@@ -30,6 +32,9 @@ var (
 	ErrColumnNotEmpty     = errors.New("column has tasks")
 	ErrLastColumn         = errors.New("project must keep at least one column")
 	ErrTooManyColumns     = errors.New("too many columns")
+	ErrNoDoneColumn       = errors.New("project has no done column")
+	ErrTooManyReminders   = errors.New("too many reminders")
+	ErrPastTime           = errors.New("time has passed")
 )
 
 // Task is a card on a kanban board.
@@ -41,6 +46,7 @@ type Task struct {
 	Description string
 	Priority    Priority
 	DueAt       *time.Time
+	DueAllDay   bool // DueAt is the end of a day without a specific time
 	Position    int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -51,6 +57,77 @@ type Task struct {
 // IsOverdue reports whether an open task is past its deadline.
 func (t Task) IsOverdue(now time.Time) bool {
 	return t.DoneAt == nil && t.DueAt != nil && t.DueAt.Before(now)
+}
+
+// NewTask describes a task to create.
+type NewTask struct {
+	Title     string
+	Priority  Priority
+	Tags      []string
+	DueAt     *time.Time
+	DueAllDay bool
+}
+
+// Reminder kinds.
+const (
+	ReminderDeadline = "deadline"
+	ReminderCustom   = "custom"
+)
+
+// Reminder is a scheduled notification about a task.
+type Reminder struct {
+	ID       int64
+	TaskID   int64
+	RemindAt time.Time
+	SentAt   *time.Time
+	Kind     string
+}
+
+// DeadlineReminderAt returns when to remind about a deadline, or false if no
+// reminder is needed: all-day deadlines are covered by the morning digest,
+// past deadlines need none, and before <= 0 disables reminders. If the
+// deadline is closer than before, the reminder fires at the deadline itself
+// rather than right away, since the user has just set it.
+func DeadlineReminderAt(due time.Time, allDay bool, before int, now time.Time) (time.Time, bool) {
+	if allDay || before <= 0 || !due.After(now) {
+		return time.Time{}, false
+	}
+	at := due.Add(-time.Duration(before) * time.Minute)
+	if !at.After(now) {
+		at = due
+	}
+	return at, true
+}
+
+// ReminderJob is a due reminder with what is needed to deliver it.
+type ReminderJob struct {
+	Reminder
+	Task        Task
+	ProjectName string
+	// Skip is set when the reminder is obsolete: the task is done or its project archived.
+	Skip bool
+	User User
+}
+
+// DigestItem is a task listed in the morning digest.
+type DigestItem struct {
+	Task        Task
+	ProjectName string
+}
+
+// Digest is the morning summary of a user's open tasks.
+type Digest struct {
+	Overdue []DigestItem
+	Today   []DigestItem
+}
+
+// Empty reports whether there is nothing to send.
+func (d Digest) Empty() bool { return len(d.Overdue) == 0 && len(d.Today) == 0 }
+
+// EndOfDay returns the last second of t's day in loc.
+func EndOfDay(t time.Time, loc *time.Location) time.Time {
+	l := t.In(loc)
+	return time.Date(l.Year(), l.Month(), l.Day(), 23, 59, 59, 0, loc)
 }
 
 // TaskSummary is a task with checklist progress, for board lists.
