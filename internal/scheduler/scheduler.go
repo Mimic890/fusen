@@ -35,7 +35,13 @@ type Store interface {
 type Notifier interface {
 	SendReminder(ctx context.Context, job domain.ReminderJob) error
 	SendDigest(ctx context.Context, u domain.User, d domain.Digest) error
+	// Temporary reports whether a failed send may succeed if retried
+	// (network errors, rate limiting, server errors).
+	Temporary(err error) bool
 }
+
+// retryBackoff is the wait before each retry of a temporarily failed send.
+var retryBackoff = []time.Duration{2 * time.Second, 5 * time.Second}
 
 // Scheduler checks for due reminders and digests periodically.
 type Scheduler struct {
@@ -44,20 +50,30 @@ type Scheduler struct {
 	log    *slog.Logger
 	now    func() time.Time
 	pause  func(ctx context.Context) error
+	sleep  func(ctx context.Context, d time.Duration) error
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // New creates a scheduler.
 func New(st Store, n Notifier, log *slog.Logger) *Scheduler {
-	return &Scheduler{store: st, notify: n, log: log, now: time.Now, pause: func(ctx context.Context) error {
-		t := time.NewTimer(sendPause)
-		defer t.Stop()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-t.C:
-			return nil
-		}
-	}}
+	return &Scheduler{
+		store:  st,
+		notify: n,
+		log:    log,
+		now:    time.Now,
+		pause:  func(ctx context.Context) error { return sleepCtx(ctx, sendPause) },
+		sleep:  sleepCtx,
+	}
 }
 
 // Run checks every Interval until ctx is cancelled.
@@ -88,17 +104,25 @@ func (s *Scheduler) reminders(ctx context.Context) {
 		return
 	}
 	for _, j := range jobs {
+		outage := false
 		if !j.Skip {
-			if err := s.notify.SendReminder(ctx, j); err != nil {
-				if errors.Is(err, context.Canceled) {
-					return
-				}
-				// Not retried: a failing reminder must not be resent every tick.
+			err := s.deliver(ctx, func(ctx context.Context) error { return s.notify.SendReminder(ctx, j) })
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if err != nil {
+				// Given up: logged and marked, so it is not resent every tick.
 				s.log.Warn("send reminder", "reminder_id", j.ID, "user_id", j.User.TgID, "err", err)
+				outage = s.notify.Temporary(err)
 			}
 		}
 		if err := s.store.MarkReminderSent(ctx, j.ID, now); err != nil {
 			s.log.Error("mark reminder sent", "reminder_id", j.ID, "err", err)
+			return
+		}
+		// After retries still failed for a temporary reason, the API is likely
+		// unreachable: leave the rest of the batch for the next tick.
+		if outage {
 			return
 		}
 		if !j.Skip && s.pause(ctx) != nil {
@@ -126,10 +150,11 @@ func (s *Scheduler) digests(ctx context.Context) {
 			continue
 		}
 		if !d.Empty() {
-			if err := s.notify.SendDigest(ctx, u, d); err != nil {
-				if errors.Is(err, context.Canceled) {
-					return
-				}
+			err := s.deliver(ctx, func(ctx context.Context) error { return s.notify.SendDigest(ctx, u, d) })
+			if errors.Is(err, context.Canceled) {
+				return
+			}
+			if err != nil {
 				s.log.Warn("send digest", "user_id", u.TgID, "err", err)
 			}
 		}
@@ -140,6 +165,20 @@ func (s *Scheduler) digests(ctx context.Context) {
 		}
 		if !d.Empty() && s.pause(ctx) != nil {
 			return
+		}
+	}
+}
+
+// deliver calls send, retrying temporary failures with backoff.
+func (s *Scheduler) deliver(ctx context.Context, send func(context.Context) error) error {
+	for attempt := 0; ; attempt++ {
+		err := send(ctx)
+		if err == nil || attempt == len(retryBackoff) || !s.notify.Temporary(err) {
+			return err
+		}
+		s.log.Info("retrying send", "attempt", attempt+1, "in", retryBackoff[attempt], "err", err)
+		if err := s.sleep(ctx, retryBackoff[attempt]); err != nil {
+			return err
 		}
 	}
 }
