@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -271,5 +273,43 @@ func TestSettings(t *testing.T) {
 	}
 	if err := s.SetLang(ctx, 1, "de", "", ""); err == nil {
 		t.Error("CHECK constraint must reject unknown languages")
+	}
+}
+
+func TestOpenReportsUnwritableDir(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	dir := filepath.Join(t.TempDir(), "data")
+	if err := os.Mkdir(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o700) })
+
+	_, err := Open(context.Background(), filepath.Join(dir, "fusen.db"))
+	if !errors.Is(err, ErrNotWritable) || !strings.Contains(err.Error(), "chown") {
+		t.Fatalf("err = %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("check left files: %v", entries)
+	}
+}
+
+func TestOpenReportsReadOnlyDBFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "fusen.db")
+	s, err := Open(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if err := os.Chmod(path, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(context.Background(), path); !errors.Is(err, ErrNotWritable) {
+		t.Fatalf("err = %v", err)
 	}
 }
