@@ -39,30 +39,110 @@ func (f *fakeStore) MarkDigestSent(_ context.Context, id int64, date string) err
 	return nil
 }
 
+var (
+	errPermanent = errors.New("blocked by user")
+	errTemporary = errors.New("connection reset")
+)
+
 type fakeNotifier struct {
 	reminders []int64
 	digests   []int64
-	fail      bool
+	fail      bool // every reminder send fails permanently
+	// failures are returned by the next sends, in order, before succeeding.
+	failures []error
+}
+
+func (f *fakeNotifier) next() error {
+	if len(f.failures) > 0 {
+		err := f.failures[0]
+		f.failures = f.failures[1:]
+		return err
+	}
+	return nil
 }
 
 func (f *fakeNotifier) SendReminder(_ context.Context, j domain.ReminderJob) error {
 	f.reminders = append(f.reminders, j.ID)
 	if f.fail {
-		return errors.New("blocked by user")
+		return errPermanent
 	}
-	return nil
+	return f.next()
 }
 
 func (f *fakeNotifier) SendDigest(_ context.Context, u domain.User, _ domain.Digest) error {
 	f.digests = append(f.digests, u.TgID)
-	return nil
+	return f.next()
 }
+
+func (f *fakeNotifier) Temporary(err error) bool { return errors.Is(err, errTemporary) }
 
 func newTest(st *fakeStore, n *fakeNotifier, now time.Time) *Scheduler {
 	s := New(st, n, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	s.now = func() time.Time { return now }
 	s.pause = func(context.Context) error { return nil }
+	s.sleep = func(context.Context, time.Duration) error { return nil }
 	return s
+}
+
+func TestReminderRetriesTemporaryFailures(t *testing.T) {
+	st := &fakeStore{jobs: []domain.ReminderJob{{Reminder: domain.Reminder{ID: 1}}, {Reminder: domain.Reminder{ID: 2}}},
+		digested: map[int64]string{}}
+	n := &fakeNotifier{failures: []error{errTemporary, errTemporary}}
+	s := newTest(st, n, time.Now())
+	var waits []time.Duration
+	s.sleep = func(_ context.Context, d time.Duration) error { waits = append(waits, d); return nil }
+	s.Tick(context.Background())
+
+	// Reminder 1 succeeds on the third attempt after two backoffs.
+	if len(n.reminders) != 4 || n.reminders[2] != 1 || n.reminders[3] != 2 {
+		t.Errorf("attempts = %v", n.reminders)
+	}
+	if len(waits) != 2 || waits[0] != retryBackoff[0] || waits[1] != retryBackoff[1] {
+		t.Errorf("backoff = %v", waits)
+	}
+	if len(st.sent) != 2 {
+		t.Errorf("marked = %v", st.sent)
+	}
+}
+
+func TestReminderGivesUpAndDefersRestOfBatch(t *testing.T) {
+	st := &fakeStore{jobs: []domain.ReminderJob{{Reminder: domain.Reminder{ID: 1}}, {Reminder: domain.Reminder{ID: 2}}},
+		digested: map[int64]string{}}
+	n := &fakeNotifier{failures: []error{errTemporary, errTemporary, errTemporary}}
+	newTest(st, n, time.Now()).Tick(context.Background())
+
+	// 1 initial attempt + len(retryBackoff) retries, then marked and logged.
+	if len(n.reminders) != 1+len(retryBackoff) {
+		t.Errorf("attempts = %v", n.reminders)
+	}
+	// The API looks unreachable: reminder 2 waits for the next tick.
+	if len(st.sent) != 1 || st.sent[0] != 1 {
+		t.Errorf("marked = %v", st.sent)
+	}
+}
+
+func TestPermanentFailureIsNotRetried(t *testing.T) {
+	st := &fakeStore{jobs: []domain.ReminderJob{{Reminder: domain.Reminder{ID: 1}}, {Reminder: domain.Reminder{ID: 2}}},
+		digested: map[int64]string{}}
+	n := &fakeNotifier{failures: []error{errPermanent}}
+	newTest(st, n, time.Now()).Tick(context.Background())
+	if len(n.reminders) != 2 || len(st.sent) != 2 {
+		t.Errorf("attempts = %v, marked = %v", n.reminders, st.sent)
+	}
+}
+
+func TestDigestRetries(t *testing.T) {
+	msk, _ := time.LoadLocation("Europe/Moscow")
+	st := &fakeStore{
+		users:    []domain.User{{TgID: 1, Timezone: "Europe/Moscow", DigestTime: "09:00"}},
+		digests:  map[int64]domain.Digest{1: {Today: []domain.DigestItem{{}}}},
+		digested: map[int64]string{},
+	}
+	n := &fakeNotifier{failures: []error{errTemporary}}
+	newTest(st, n, time.Date(2026, 10, 15, 9, 5, 0, 0, msk)).Tick(context.Background())
+	if len(n.digests) != 2 || st.digested[1] == "" {
+		t.Errorf("digest attempts = %v, marked = %v", n.digests, st.digested)
+	}
 }
 
 func TestRemindersSkipAndMark(t *testing.T) {

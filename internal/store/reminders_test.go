@@ -255,3 +255,28 @@ func TestDigest(t *testing.T) {
 		t.Errorf("disabled digest still listed")
 	}
 }
+
+func TestSnoozeReminderKeepsKind(t *testing.T) {
+	s, _, cols := setupBoard(t)
+	ctx := context.Background()
+	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
+	due := now.Add(30 * time.Minute)
+	tasks, _ := s.AddTasks(ctx, 1, cols[0].ID, []domain.NewTask{{Title: "a", DueAt: &due}}, 60, now)
+	rs, _ := s.ListReminders(ctx, tasks[0].ID)
+	_ = s.MarkReminderSent(ctx, rs[0].ID, now)
+
+	if _, err := s.SnoozeReminder(ctx, 2, rs[0].ID, now.Add(time.Hour)); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("foreign snooze: %v", err)
+	}
+	tid, err := s.SnoozeReminder(ctx, 1, rs[0].ID, now.Add(time.Hour))
+	if err != nil || tid != tasks[0].ID {
+		t.Fatalf("snooze: %d %v", tid, err)
+	}
+	got, _ := s.ListReminders(ctx, tasks[0].ID)
+	if len(got) != 1 || got[0].Kind != domain.ReminderDeadline || !got[0].RemindAt.Equal(now.Add(time.Hour)) {
+		t.Fatalf("reminders = %+v", got)
+	}
+	if task, _ := s.GetTask(ctx, 1, tasks[0].ID); !task.DueAt.Equal(due) {
+		t.Errorf("deadline changed: %v", task.DueAt)
+	}
+}
