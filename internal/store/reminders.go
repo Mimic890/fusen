@@ -259,3 +259,19 @@ func (s *Store) MarkDigestSent(ctx context.Context, userID int64, date string) e
 	_, err := s.db.ExecContext(ctx, `UPDATE users SET digest_sent_on = ? WHERE tg_id = ?`, date, userID)
 	return err
 }
+
+// SnoozeReminder schedules the reminder again at a later time, keeping its
+// kind, and returns the task ID. Snoozing replaces a sent reminder, so it does
+// not count toward the custom reminder limit.
+func (s *Store) SnoozeReminder(ctx context.Context, userID, id int64, at time.Time) (int64, error) {
+	r, err := s.GetReminder(ctx, userID, id)
+	if err != nil {
+		return 0, err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO reminders (task_id, remind_at, kind) VALUES (?, ?, ?)`,
+		r.TaskID, at.Unix(), r.Kind)
+	if err != nil {
+		return 0, fmt.Errorf("snooze reminder: %w", err)
+	}
+	return r.TaskID, nil
+}

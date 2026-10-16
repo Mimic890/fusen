@@ -183,24 +183,40 @@ func TestReminderNotificationActions(t *testing.T) {
 	live := h.live()
 	h.api.take()
 
-	// "+1 h" on a deadline reminder moves the deadline.
-	_, msg := sendDueReminder(t, h, due)
+	// "+1 h" on a deadline reminder only snoozes the reminder.
+	job, msg := sendDueReminder(t, h, due)
+	_ = h.store.MarkReminderSent(ctx, job.ID, now)
 	calls := h.api.take()
 	if text := lastText(calls, "sendMessage"); !strings.Contains(text, "Скоро дедлайн") || !strings.Contains(text, `format="r"`) {
 		t.Errorf("notice: %q", text)
 	}
-	h.press(msg, cb.New(cb.KindReminderAction, mustReminder(t, h, id).ID, cb.ActHour))
+	h.press(msg, cb.New(cb.KindReminderAction, job.ID, cb.ActHour))
 	calls = h.api.take()
 	edit := lastCall(t, calls, "editMessageText")
-	if edit.params["message_id"] != itoa(msg) || !strings.Contains(edit.params["text"], "перенесён") {
+	if edit.params["message_id"] != itoa(msg) || !strings.Contains(edit.params["text"], "напомню") {
 		t.Fatalf("result edit: %+v", edit.params)
 	}
 	got, _ := h.store.GetTask(ctx, userID, id)
-	if !got.DueAt.Equal(due.Truncate(time.Second).Add(time.Hour)) {
-		t.Errorf("deadline = %v, want %v", got.DueAt, due.Add(time.Hour))
+	if !got.DueAt.Equal(due.Truncate(time.Second)) {
+		t.Errorf("deadline changed by +1 h: %v", got.DueAt)
+	}
+	rs, _ := h.store.ListReminders(ctx, id)
+	if len(rs) != 1 || rs[0].Kind != domain.ReminderDeadline || rs[0].RemindAt.Sub(now) < 59*time.Minute {
+		t.Fatalf("snoozed reminders = %+v", rs)
 	}
 	if h.live() != live {
 		t.Error("notification actions must not touch the live screen")
+	}
+
+	// "Tomorrow" on the snoozed deadline reminder moves the deadline.
+	job, msg = sendDueReminder(t, h, now.Add(2*time.Hour))
+	h.press(msg, cb.New(cb.KindReminderAction, job.ID, cb.ActTomorrow))
+	if text := lastCall(t, h.api.take(), "editMessageText").params["text"]; !strings.Contains(text, "дедлайн перенесён") {
+		t.Errorf("tomorrow result: %q", text)
+	}
+	got, _ = h.store.GetTask(ctx, userID, id)
+	if want := due.Truncate(time.Second).AddDate(0, 0, 1); !got.DueAt.Equal(want) {
+		t.Errorf("deadline = %v, want %v", got.DueAt, want)
 	}
 
 	// "Done" completes the task.

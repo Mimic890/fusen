@@ -137,9 +137,10 @@ func (b *Bot) onNotifyOpen(ctx context.Context, r *request) error {
 	return b.openLive(ctx, r, views.TaskCard(r.l, c))
 }
 
-// onReminderAction handles the buttons of a reminder message. For a deadline
-// reminder, "+1 h" and "Tomorrow" move the deadline; for a custom reminder
-// they remind again later. The message is then replaced with the outcome.
+// onReminderAction handles the buttons of a reminder message. "+1 h" reminds
+// again in an hour. "Tomorrow" moves the deadline of a deadline reminder to the
+// same time tomorrow, or reminds again tomorrow for a custom reminder. The
+// message is then replaced with the outcome.
 func (b *Bot) onReminderAction(ctx context.Context, r *request) error {
 	id, err := r.data.ID(0)
 	if err != nil {
@@ -165,16 +166,19 @@ func (b *Bot) onReminderAction(ctx context.Context, r *request) error {
 		}
 		text = r.l.T("notify.result_done", "title", title, "column", views.Escape(c.Name))
 
-	case (act == cb.ActHour || act == cb.ActTomorrow) && rem.Kind == domain.ReminderDeadline && t.DueAt != nil:
-		due := postpone(*t.DueAt, act, now, loc)
+	case act == cb.ActTomorrow && rem.Kind == domain.ReminderDeadline && t.DueAt != nil:
+		due := nextDay(*t.DueAt, now, loc)
 		if err := b.store.SetTaskDue(ctx, r.user.TgID, t.ID, &due, false, r.user.RemindBeforeMin, now); err != nil {
 			return err
 		}
 		text = r.l.T("notify.result_postponed", "title", title, "date", views.TgTime(due, loc))
 
 	case act == cb.ActHour || act == cb.ActTomorrow:
-		at := postpone(rem.RemindAt, act, now, loc)
-		if err := b.store.AddReminder(ctx, r.user.TgID, t.ID, at); err != nil {
+		at := now.Add(time.Hour)
+		if act == cb.ActTomorrow {
+			at = nextDay(rem.RemindAt, now, loc)
+		}
+		if _, err := b.store.SnoozeReminder(ctx, r.user.TgID, rem.ID, at); err != nil {
 			return err
 		}
 		text = r.l.T("notify.result_snoozed", "title", title, "date", views.TgTime(at, loc))
@@ -185,15 +189,12 @@ func (b *Bot) onReminderAction(ctx context.Context, r *request) error {
 	return b.editScreen(ctx, r.user.TgID, r.msgID, views.NoticeResult(r.l, text, t.ID))
 }
 
-// postpone shifts t by an hour (counting from now if t has passed) or to the
-// same time of day tomorrow.
-func postpone(t time.Time, act string, now time.Time, loc *time.Location) time.Time {
-	if act == cb.ActHour {
-		if t.Before(now) {
-			t = now
-		}
-		return t.Add(time.Hour)
-	}
+// nextDay moves t one day later; a time that has already passed moves to
+// tomorrow at the same time of day.
+func nextDay(t time.Time, now time.Time, loc *time.Location) time.Time {
 	l := t.In(loc)
+	if t.After(now) {
+		return l.AddDate(0, 0, 1)
+	}
 	return atClock(now.AddDate(0, 0, 1), l.Hour(), l.Minute(), loc)
 }
