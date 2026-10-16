@@ -1,6 +1,7 @@
 # fusen
 
-Personal kanban boards in Telegram: [@fusenboard_bot](https://t.me/fusenboard_bot).
+Personal kanban boards in Telegram. fusen is self-hosted: you run it with
+your own bot, created in a minute with [@BotFather](https://t.me/BotFather).
 
 fusen keeps your tasks in projects with kanban columns and lets you work with
 them without leaving the chat: one "live" message is edited as you navigate,
@@ -16,9 +17,19 @@ notifications.
 
 Solo use for now; collaboration is out of scope of the MVP.
 
+## Create your bot
+
+1. Open [@BotFather](https://t.me/BotFather), send `/newbot` and pick a name
+   and a username, e.g. `@your_bot`.
+2. Copy the token BotFather replies with and set it as `BOT_TOKEN` in `.env`.
+3. Start fusen ([with Docker](#running-with-docker) or
+   [from the published image](#running-on-a-server)) and send `/start` to `@your_bot`.
+
+To keep the bot to yourself, set `ALLOWED_USER_IDS` to your Telegram user ID.
+
 ## Using the bot
 
-Send `/start` to open your projects. `/settings` opens the settings.
+Send `/start` to `@your_bot` to open your projects. `/settings` opens the settings.
 
 ### Boards
 

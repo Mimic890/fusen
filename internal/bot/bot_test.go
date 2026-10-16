@@ -78,7 +78,7 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":0,"chat":{"id":%s,"type":"private"}}}`, id, params["chat_id"])
 	case "getMe":
-		io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"fusen","username":"fusenboard_bot"}}`)
+		io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"fusen","username":"your_bot"}}`)
 	case "getUpdates":
 		io.WriteString(w, `{"ok":true,"result":[]}`)
 	case "deleteMessage":
@@ -416,12 +416,12 @@ func TestWithRetryGivesUp(t *testing.T) {
 
 func TestCommand(t *testing.T) {
 	cases := map[string]string{
-		"/start":                  "start",
-		"/start t_42":             "start",
-		"/Start@fusenboard_bot x": "start",
-		" /help ":                 "help",
-		"start":                   "",
-		"":                        "",
+		"/start":            "start",
+		"/start t_42":       "start",
+		"/Start@your_bot x": "start",
+		" /help ":           "help",
+		"start":             "",
+		"":                  "",
 	}
 	for in, want := range cases {
 		if got := command(in); got != want {
