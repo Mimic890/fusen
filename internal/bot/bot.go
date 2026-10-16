@@ -216,7 +216,9 @@ func (b *Bot) onMessage(ctx context.Context, m *models.Message) {
 	}
 }
 
-// command returns the bot command name of text ("/start@fusenboard_bot x" -> "start").
+// command returns the bot command name of text ("/start@your_bot x" -> "start").
+// The @suffix is dropped whatever the bot is called: the bot works in private
+// chats only, where every command is addressed to it.
 func command(text string) string {
 	first, _, _ := strings.Cut(strings.TrimSpace(text), " ")
 	if !strings.HasPrefix(first, "/") {
