@@ -131,6 +131,60 @@ docker compose start
 To restore, stop the bot, put the backup back as `data/fusen.db` (remove any
 `data/fusen.db-wal` and `data/fusen.db-shm`) and start it again.
 
+## Running on a server
+
+CI publishes the image to GitHub Container Registry on every push to `main`
+(`edge`) and for every version tag (`v0.1.0` → `0.1.0`, `0.1` and `latest`).
+Images are built for `linux/amd64` and `linux/arm64`. The server only needs
+Docker; no source code or Go toolchain.
+
+Create a directory with `docker-compose.yml`, `.env` and `data/`:
+
+```yaml
+services:
+  fusen:
+    image: ghcr.io/mimic890/fusen:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_PATH: /data/fusen.db
+    # Run as the owner of ./data so the bind mount is writable.
+    user: "${FUSEN_UID:-1000}:${FUSEN_GID:-1000}"
+    volumes:
+      - ./data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+```
+
+```fish
+mkdir -p fusen/data
+cd fusen
+# put docker-compose.yml here, then create .env with BOT_TOKEN (see .env.example)
+docker compose pull
+docker compose up -d
+```
+
+Update to the latest image:
+
+```fish
+docker compose pull
+docker compose up -d
+```
+
+To pin a version, use a tag such as `ghcr.io/mimic890/fusen:0.1.0` instead of
+`latest`; `edge` follows `main`.
+
 ## Configuration
 
 Environment variables (set them in `.env`):
@@ -211,6 +265,15 @@ It does not poll for updates, so it can run next to a deployed bot:
 
 ```fish
 env BOT_TOKEN=<token> FUSEN_LIVE_CHAT_ID=<your chat id> go test -tags live -run Live ./internal/bot/
+```
+
+### Releases
+
+Push a version tag; the release workflow builds and publishes the image:
+
+```fish
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 ### Layout
