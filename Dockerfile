@@ -1,15 +1,32 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.27-alpine AS build
+ARG GO_VERSION=1.27
+
+FROM golang:${GO_VERSION}-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/fusen ./cmd/fusen
+ARG VERSION=dev
+# Pure Go build (modernc SQLite): a static binary without CGO.
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/fusen ./cmd/fusen
 
+# Distroless static: CA certificates and a non-root user, no shell.
+# The timezone database is embedded in the binary.
 FROM gcr.io/distroless/static-debian12:nonroot
+
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="fusen" \
+      org.opencontainers.image.description="Personal kanban boards in Telegram" \
+      org.opencontainers.image.source="https://github.com/Mimic890/fusen" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.version="${VERSION}"
+
 COPY --from=build /out/fusen /usr/local/bin/fusen
 ENV DB_PATH=/data/fusen.db
+USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/fusen"]

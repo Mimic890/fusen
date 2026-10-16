@@ -1,7 +1,10 @@
 services:
   fusen:
-    build: .
-    image: fusen:latest
+    build:
+      context: .
+      args:
+        VERSION: ${FUSEN_VERSION:-dev}
+    image: fusen:${FUSEN_VERSION:-dev}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -10,3 +13,18 @@ services:
     user: "${FUSEN_UID:-1000}:${FUSEN_GID:-1000}"
     volumes:
       - ./data:/data
+    # The bot only writes to /data; SQLite may spill temporary files to /tmp.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    # SIGTERM lets the bot finish in-flight updates and close the database.
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
