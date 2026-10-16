@@ -139,3 +139,33 @@ func TestDigestsSendOnceAndSkipEmpty(t *testing.T) {
 		t.Errorf("marked = %v", st.digested)
 	}
 }
+
+func TestRunStopsOnCancel(t *testing.T) {
+	st := &fakeStore{jobs: []domain.ReminderJob{{Reminder: domain.Reminder{ID: 1}}}, digested: map[int64]string{}}
+	n := &fakeNotifier{}
+	s := newTest(st, n, time.Now())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	go func() { s.Run(ctx); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Run did not return")
+	}
+	if len(n.reminders) != 1 {
+		t.Errorf("Run must tick once right away: %v", n.reminders)
+	}
+}
+
+func TestDefaultPauseRespectsCancel(t *testing.T) {
+	s := New(&fakeStore{}, &fakeNotifier{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.pause(ctx); err == nil {
+		t.Error("pause ignored cancellation")
+	}
+	if err := s.pause(context.Background()); err != nil {
+		t.Error(err)
+	}
+}

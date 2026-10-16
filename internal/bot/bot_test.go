@@ -77,6 +77,10 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			id, _ = strconv.Atoi(params["message_id"])
 		}
 		fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":0,"chat":{"id":%s,"type":"private"}}}`, id, params["chat_id"])
+	case "getMe":
+		io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"fusen","username":"fusenboard_bot"}}`)
+	case "getUpdates":
+		io.WriteString(w, `{"ok":true,"result":[]}`)
 	case "deleteMessage":
 		if f.failDelete {
 			io.WriteString(w, `{"ok":false,"error_code":400,"description":"Bad Request: message can't be deleted"}`)
