@@ -2,7 +2,9 @@
 
 ARG GO_VERSION=1.27
 
-FROM golang:${GO_VERSION}-alpine AS build
+# The build stage runs on the builder's platform and cross-compiles for the
+# target, so multi-arch images need no Go emulation.
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -10,13 +12,17 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 COPY . .
 ARG VERSION=dev
+ARG TARGETOS
+ARG TARGETARCH
 # Pure Go build (modernc SQLite): a static binary without CGO.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/fusen ./cmd/fusen
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/fusen ./cmd/fusen
 
-# Distroless static: CA certificates and a non-root user, no shell.
-# The timezone database is embedded in the binary.
+# Distroless static: CA certificates and a non-root user, no shell; a
+# multi-arch base, and only COPY runs in this stage. The timezone database is
+# embedded in the binary.
 FROM gcr.io/distroless/static-debian12:nonroot
 
 ARG VERSION=dev
