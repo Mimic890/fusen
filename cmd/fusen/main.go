@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -17,7 +18,16 @@ import (
 	"github.com/Mimic890/fusen/locales"
 )
 
+// version is set at build time: -ldflags "-X main.version=1.0.0".
+var version = "dev"
+
 func main() {
+	showVersion := flag.Bool("version", false, "print the version and exit")
+	flag.Parse()
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 	if err := run(); err != nil {
 		slog.Error("fatal", "err", err)
 		os.Exit(1)
@@ -52,7 +62,7 @@ func run() error {
 		return err
 	}
 
-	log.Info("fusen started", "db", cfg.DBPath, "default_tz", cfg.DefaultTZ, "allowlist", len(cfg.AllowedUserIDs))
+	log.Info("fusen started", "version", version, "db", cfg.DBPath, "default_tz", cfg.DefaultTZ, "allowlist", len(cfg.AllowedUserIDs))
 	go scheduler.New(st, b, log).Run(ctx)
 	b.Run(ctx)
 	log.Info("fusen stopped")
