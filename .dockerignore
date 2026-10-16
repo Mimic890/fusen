@@ -1,4 +1,7 @@
 .git
+.github
 data
 .env
 fusen
+*.md
+**/*_test.go
